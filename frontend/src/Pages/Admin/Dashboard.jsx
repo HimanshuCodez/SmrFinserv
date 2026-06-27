@@ -270,7 +270,7 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
         try {
           const settingsSnap = await getDoc(doc(db, "settings", "googleSheets"));
           if (settingsSnap.exists() && settingsSnap.data().webAppUrl) {
-            const syncData = { ...dataToSave };
+            const syncData = { id: recordToEdit.id, ...dataToSave };
             Object.keys(syncData).forEach(key => {
               if (key.toLowerCase().includes("photo") || key.toLowerCase().includes("pdf") || key.toLowerCase().includes("doc")) {
                 delete syncData[key];
@@ -298,7 +298,7 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
           nextSlNo = Math.max(...slNos) + 1;
         }
 
-        await addDoc(collection(db, "dataEntries"), {
+        const docRef = await addDoc(collection(db, "dataEntries"), {
           ...dataToSave,
           slNo: nextSlNo,
           entryMonth: currentMonth,
@@ -311,6 +311,7 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
           const settingsSnap = await getDoc(doc(db, "settings", "googleSheets"));
           if (settingsSnap.exists() && settingsSnap.data().webAppUrl) {
             const syncData = { 
+              id: docRef.id,
               ...dataToSave, 
               slNo: nextSlNo, 
               entryMonth: currentMonth, 
@@ -970,7 +971,7 @@ const SyncSettings = ({ isMobile }) => {
         const catEntries = allEntries.filter(e => e.category === cat);
         if (catEntries.length > 0) {
           const recordsToSync = catEntries.map(e => {
-            const { id, createdAt, updatedAt, ...rest } = e;
+            const { createdAt, updatedAt, ...rest } = e;
             Object.keys(rest).forEach(key => {
               if (key.toLowerCase().includes("photo") || key.toLowerCase().includes("pdf") || key.toLowerCase().includes("doc")) {
                 delete rest[key];
@@ -1029,10 +1030,10 @@ const SyncSettings = ({ isMobile }) => {
       <div style={{ marginTop: 40, borderTop: "1px solid #e2e8f0", paddingTop: 24 }}>
         <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: "#1e293b" }}>Setup Instructions:</h3>
         <ol style={{ fontSize: 14, color: "#475569", lineHeight: 1.8, paddingLeft: 20 }}>
-          <li>Open your Google Sheet: <a href="https://docs.google.com/spreadsheets/d/1XpV8SUJaQakqmprgYaOS6tNONgDHGe_bD7nFfve8dHA/edit" target="_blank" rel="noreferrer" style={{ color: "#1e90ff" }}>Open Sheet</a></li>
-          <li>Go to <b>Extensions > Apps Script</b>.</li>
-          <li>Paste the Apps Script code provided by the administrator.</li>
-          <li>Click <b>Deploy > New Deployment</b>.</li>
+          <li>Open your Google Sheet: <a href="https://docs.google.com/spreadsheets/d/1Ftu7ivwR8aWZ8g3tgvLmikIB7D93eHaaVoINMZLlCuE/edit?gid=0#gid=0" target="_blank" rel="noreferrer" style={{ color: "#1e90ff" }}>Open Sheet</a></li>
+          <li>Go to <b>Extensions &gt; Apps Script</b>.</li>
+          <li>Paste the code from <b>frontend/google-apps-script.js</b>.</li>
+          <li>Click <b>Deploy &gt; New Deployment</b>.</li>
           <li>Select <b>Type: Web App</b>.</li>
           <li>Set "Execute as" to <b>Me</b> and "Who has access" to <b>Anyone</b>.</li>
           <li>Click Deploy and authorize the permissions.</li>
