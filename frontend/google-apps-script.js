@@ -42,9 +42,25 @@ const HEADERS = [
   "syncedAt"
 ];
 
+function doGet() {
+  try {
+    setupSheets();
+    return jsonResponse({
+      ok: true,
+      message: "SMR Google Sheets sync is ready.",
+      spreadsheetId: SPREADSHEET_ID
+    });
+  } catch (error) {
+    return jsonResponse({
+      ok: false,
+      error: error.message
+    });
+  }
+}
+
 function doPost(e) {
   try {
-    const payload = JSON.parse(e.postData.contents || "{}");
+    const payload = JSON.parse((e && e.postData && e.postData.contents) || "{}");
     const category = normalizeCategory(payload.category);
 
     if (!category) {
@@ -61,8 +77,29 @@ function doPost(e) {
 
     return jsonResponse({ ok: true });
   } catch (error) {
+    writeSyncError(error);
     return jsonResponse({ ok: false, error: error.message });
   }
+}
+
+function setupSheets() {
+  ["Motor", "Health", "SME", "Life", "MutualFund"].forEach(function(category) {
+    getSheet(category);
+  });
+}
+
+function testSync() {
+  syncRow("Motor", {
+    id: "apps-script-test",
+    slNo: "TEST",
+    entryMonth: "06",
+    entryYear: "2026",
+    category: "Motor",
+    policyNo: "TEST-POLICY",
+    name: "Apps Script Test",
+    mobileNo: "0000000000",
+    remarks: "If this row appears, Apps Script has permission to write."
+  });
 }
 
 function syncAll(category, records) {
@@ -117,6 +154,19 @@ function getSheet(category) {
   }
 
   return sheet;
+}
+
+function writeSyncError(error) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = spreadsheet.getSheetByName("Sync Errors") || spreadsheet.insertSheet("Sync Errors");
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(["time", "message", "stack"]);
+    }
+    sheet.appendRow([new Date(), error.message || String(error), error.stack || ""]);
+  } catch (ignored) {
+    console.error(error);
+  }
 }
 
 function toRow(record) {
