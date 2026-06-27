@@ -922,16 +922,20 @@ const Login = ({ onLogin }) => {
 
 const SyncSettings = ({ isMobile }) => {
   const [url, setUrl] = useState("");
+  const [savedUrl, setSavedUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
         const docSnap = await getDoc(doc(db, "settings", "googleSheets"));
         if (docSnap.exists()) {
-          setUrl(docSnap.data().webAppUrl || "");
+          const storedUrl = docSnap.data().webAppUrl || "";
+          setUrl(storedUrl);
+          setSavedUrl(storedUrl);
         }
       } catch (e) {
         console.error("Error fetching sync settings:", e);
@@ -948,11 +952,36 @@ const SyncSettings = ({ isMobile }) => {
     setSaving(true);
     try {
       await setDoc(doc(db, "settings", "googleSheets"), { webAppUrl: url }, { merge: true });
+      setSavedUrl(url);
       toast.success("Google Sheets URL saved!");
     } catch (e) {
       toast.error("Error saving URL: " + e.message);
     }
     setSaving(false);
+  };
+
+  const handleTestSync = async () => {
+    if (!url) return toast.error("Please save the Web App URL first.");
+
+    setTesting(true);
+    try {
+      const testRecord = {
+        id: `ui-test-${Date.now()}`,
+        slNo: "TEST",
+        entryMonth: new Date().getMonth() + 1,
+        entryYear: new Date().getFullYear(),
+        category: "Motor",
+        policyNo: "UI-TEST",
+        name: "Dashboard Test Sync",
+        mobileNo: "",
+        remarks: "Triggered from Admin > Sync Settings"
+      };
+      await syncToGoogleSheets(testRecord, "Motor", url);
+      toast.success("Test sync sent. Check the Motor tab.");
+    } catch (e) {
+      toast.error("Test sync failed: " + e.message);
+    }
+    setTesting(false);
   };
 
   const handleSyncAll = async () => {
@@ -1007,6 +1036,12 @@ const SyncSettings = ({ isMobile }) => {
           placeholder="https://script.google.com/macros/s/.../exec"
           style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #cbd5e1", outline: "none", fontSize: 14 }}
         />
+        <div style={{ marginTop: 10, fontSize: 12, color: "#64748b" }}>
+          <div style={{ marginBottom: 4 }}>Loaded from Firestore:</div>
+          <div style={{ fontFamily: "monospace", wordBreak: "break-all", color: savedUrl ? "#1e293b" : "#ef4444" }}>
+            {savedUrl || "No URL saved yet"}
+          </div>
+        </div>
       </div>
       
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -1024,6 +1059,14 @@ const SyncSettings = ({ isMobile }) => {
           style={{ background: "#10b981", color: "#fff", border: "none", borderRadius: 8, padding: "12px 24px", fontWeight: 700, cursor: syncingAll || !url ? "not-allowed" : "pointer", opacity: syncingAll || !url ? 0.7 : 1 }}
         >
           {syncingAll ? "Syncing All Records..." : "Sync All Existing Data to Sheets"}
+        </button>
+
+        <button
+          onClick={handleTestSync}
+          disabled={testing || !url}
+          style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 8, padding: "12px 24px", fontWeight: 700, cursor: testing || !url ? "not-allowed" : "pointer", opacity: testing || !url ? 0.7 : 1 }}
+        >
+          {testing ? "Sending Test..." : "Send Test Sync"}
         </button>
       </div>
 
