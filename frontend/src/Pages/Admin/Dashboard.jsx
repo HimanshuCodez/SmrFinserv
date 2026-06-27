@@ -990,9 +990,14 @@ const SyncSettings = ({ isMobile }) => {
     
     setSyncingAll(true);
     try {
-      const q = query(collection(db, "dataEntries"), orderBy("createdAt", "asc"));
-      const snapshot = await getDocs(q);
-      const allEntries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const snapshot = await getDocs(collection(db, "dataEntries"));
+      const allEntries = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => {
+          const aTime = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(`${a.entryYear || 0}-${a.entryMonth || 1}-01`).getTime();
+          const bTime = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(`${b.entryYear || 0}-${b.entryMonth || 1}-01`).getTime();
+          return aTime - bTime;
+        });
       
       const categories = ["Motor", "Health", "SME", "Life", "MutualFund"];
       
