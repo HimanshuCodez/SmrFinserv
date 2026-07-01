@@ -134,6 +134,78 @@ const COMPANIES_BY_CATEGORY = {
   ]
 };
 
+const SYNC_CATEGORIES = ["Motor", "Health", "SME", "Life", "MutualFund"];
+const SHEET_BACKFILL_VERSION = "v1";
+const SHEET_BATCH_SIZE = 75;
+
+const stripSheetOnlyFields = (record) => {
+  const cleaned = { ...record };
+
+  delete cleaned.createdAt;
+  delete cleaned.updatedAt;
+  delete cleaned.customCompany;
+  delete cleaned.customVehicleType;
+
+  Object.keys(cleaned).forEach((key) => {
+    const lower = key.toLowerCase();
+    if (lower.includes("photo") || lower.includes("pdf") || lower.includes("doc")) {
+      delete cleaned[key];
+    }
+  });
+
+  return cleaned;
+};
+
+const syncCategoryRecordsToSheet = async (records, category, webAppUrl, replace = false) => {
+  for (let i = 0; i < records.length; i += SHEET_BATCH_SIZE) {
+    const batch = records.slice(i, i + SHEET_BATCH_SIZE).map(stripSheetOnlyFields);
+    await syncAllToGoogleSheets(batch, category, webAppUrl, replace && i === 0);
+  }
+};
+
+const syncExistingRecordsToSheet = async (webAppUrl) => {
+  if (!webAppUrl) {
+    throw new Error("Google Apps Script Web App URL is not provided.");
+  }
+
+  const settingsRef = doc(db, "settings", "googleSheets");
+  const settingsSnap = await getDoc(settingsRef);
+  const settingsData = settingsSnap.exists() ? settingsSnap.data() : {};
+
+  if (settingsData.backfillVersion === SHEET_BACKFILL_VERSION && settingsData.backfillUrl === webAppUrl) {
+    return { skipped: true };
+  }
+
+  const snapshot = await getDocs(collection(db, "dataEntries"));
+  const allEntries = snapshot.docs
+    .map((entryDoc) => ({ id: entryDoc.id, ...entryDoc.data() }))
+    .sort((a, b) => {
+      const aTime = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(`${a.entryYear || 0}-${a.entryMonth || 1}-01`).getTime();
+      const bTime = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(`${b.entryYear || 0}-${b.entryMonth || 1}-01`).getTime();
+      return aTime - bTime;
+    });
+
+  for (const category of SYNC_CATEGORIES) {
+    const categoryEntries = allEntries.filter((entry) => entry.category === category);
+    if (categoryEntries.length > 0) {
+      await syncCategoryRecordsToSheet(categoryEntries, category, webAppUrl, true);
+    }
+  }
+
+  await setDoc(
+    settingsRef,
+    {
+      webAppUrl,
+      backfillVersion: SHEET_BACKFILL_VERSION,
+      backfillUrl: webAppUrl,
+      lastBackfilledAt: serverTimestamp()
+    },
+    { merge: true }
+  );
+
+  return { syncedCount: allEntries.length };
+};
+
 const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
   const initialFormState = {
     category: "Motor",
@@ -271,12 +343,7 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
           const settingsSnap = await getDoc(doc(db, "settings", "googleSheets"));
           if (settingsSnap.exists() && settingsSnap.data().webAppUrl) {
             const syncData = { id: recordToEdit.id, ...dataToSave };
-            Object.keys(syncData).forEach(key => {
-              if (key.toLowerCase().includes("photo") || key.toLowerCase().includes("pdf") || key.toLowerCase().includes("doc")) {
-                delete syncData[key];
-              }
-            });
-            await syncToGoogleSheets(syncData, form.category, settingsSnap.data().webAppUrl);
+            await syncToGoogleSheets(stripSheetOnlyFields(syncData), form.category, settingsSnap.data().webAppUrl);
           }
         } catch (err) { console.error("Sheet Sync Error:", err); }
 
@@ -317,12 +384,7 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
               entryMonth: currentMonth, 
               entryYear: currentYear 
             };
-            Object.keys(syncData).forEach(key => {
-              if (key.toLowerCase().includes("photo") || key.toLowerCase().includes("pdf") || key.toLowerCase().includes("doc")) {
-                delete syncData[key];
-              }
-            });
-            await syncToGoogleSheets(syncData, form.category, settingsSnap.data().webAppUrl);
+            await syncToGoogleSheets(stripSheetOnlyFields(syncData), form.category, settingsSnap.data().webAppUrl);
           }
         } catch (err) { console.error("Sheet Sync Error:", err); }
 
@@ -927,7 +989,6 @@ const SyncSettings = ({ isMobile }) => {
   const [saving, setSaving] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
   const [testing, setTesting] = useState(false);
-  const BATCH_SIZE = 75;
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -954,6 +1015,7 @@ const SyncSettings = ({ isMobile }) => {
     try {
       await setDoc(doc(db, "settings", "googleSheets"), { webAppUrl: url }, { merge: true });
       setSavedUrl(url);
+      await syncExistingRecordsToSheet(url);
       toast.success("Google Sheets URL saved!");
     } catch (e) {
       toast.error("Error saving URL: " + e.message);
@@ -999,26 +1061,11 @@ const SyncSettings = ({ isMobile }) => {
           const bTime = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(`${b.entryYear || 0}-${b.entryMonth || 1}-01`).getTime();
           return aTime - bTime;
         });
-      
-      const categories = ["Motor", "Health", "SME", "Life", "MutualFund"];
-      
-      for (const cat of categories) {
+
+      for (const cat of SYNC_CATEGORIES) {
         const catEntries = allEntries.filter(e => e.category === cat);
         if (catEntries.length > 0) {
-          const recordsToSync = catEntries.map(e => {
-            const { createdAt, updatedAt, ...rest } = e;
-            Object.keys(rest).forEach(key => {
-              if (key.toLowerCase().includes("photo") || key.toLowerCase().includes("pdf") || key.toLowerCase().includes("doc")) {
-                delete rest[key];
-              }
-            });
-            return rest;
-          });
-
-          for (let i = 0; i < recordsToSync.length; i += BATCH_SIZE) {
-            const batch = recordsToSync.slice(i, i + BATCH_SIZE);
-            await syncAllToGoogleSheets(batch, cat, url, i === 0);
-          }
+          await syncCategoryRecordsToSheet(catEntries, cat, url, true);
         }
       }
       toast.success("All data synced successfully!");
@@ -1111,6 +1158,24 @@ export default function Dashboard() {
         });
         return () => unsubscribe();
     }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const ensureSpreadsheetBackfill = async () => {
+      try {
+        const settingsSnap = await getDoc(doc(db, "settings", "googleSheets"));
+        const webAppUrl = settingsSnap.exists() ? settingsSnap.data().webAppUrl : "";
+        if (webAppUrl) {
+          await syncExistingRecordsToSheet(webAppUrl);
+        }
+      } catch (error) {
+        console.error("Initial sheet sync skipped:", error);
+      }
+    };
+
+    ensureSpreadsheetBackfill();
   }, [currentUser]);
 
   useEffect(() => {
