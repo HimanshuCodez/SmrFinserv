@@ -60,7 +60,7 @@ function doGet() {
 
 function doPost(e) {
   try {
-    const payload = JSON.parse((e && e.postData && e.postData.contents) || "{}");
+    const payload = parsePayload(e);
     const category = normalizeCategory(payload.category);
 
     if (!category) {
@@ -80,6 +80,32 @@ function doPost(e) {
     writeSyncError(error);
     return jsonResponse({ ok: false, error: error.message });
   }
+}
+
+function parsePayload(e) {
+  const rawContents = (e && e.postData && e.postData.contents) || "";
+  const rawPayload = e && e.parameter && e.parameter.payload ? e.parameter.payload : "";
+  const source = rawPayload || rawContents || "{}";
+
+  if (typeof source === "string") {
+    try {
+      return JSON.parse(source);
+    } catch (error) {
+      const params = e && e.parameter ? e.parameter : {};
+      if (params.action) {
+        return {
+          action: params.action,
+          category: params.category,
+          record: params.record ? JSON.parse(params.record) : {},
+          records: params.records ? JSON.parse(params.records) : [],
+          replace: params.replace === "true" || params.replace === true
+        };
+      }
+      throw error;
+    }
+  }
+
+  return {};
 }
 
 function setupSheets() {

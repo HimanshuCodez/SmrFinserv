@@ -9,10 +9,14 @@ export const syncToGoogleSheets = async (data, category, webAppUrl) => {
     await fetch(webAppUrl, {
       method: "POST",
       mode: "no-cors",
-      body: JSON.stringify({
-        action: "syncRow",
-        category: category,
-        record: data,
+      cache: "no-store",
+      redirect: "follow",
+      body: new URLSearchParams({
+        payload: JSON.stringify({
+          action: "syncRow",
+          category,
+          record: data,
+        })
       }),
     });
   } catch (error) {
@@ -31,11 +35,15 @@ export const syncAllToGoogleSheets = async (records, category, webAppUrl, replac
     await fetch(webAppUrl, {
       method: "POST",
       mode: "no-cors",
-      body: JSON.stringify({
-        action: "syncAll",
-        category: category,
-        records: records,
-        replace: replace,
+      cache: "no-store",
+      redirect: "follow",
+      body: new URLSearchParams({
+        payload: JSON.stringify({
+          action: "syncAll",
+          category,
+          records,
+          replace,
+        })
       }),
     });
   } catch (error) {
