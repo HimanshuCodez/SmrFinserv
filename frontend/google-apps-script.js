@@ -68,7 +68,7 @@ function doPost(e) {
     }
 
     if (payload.action === "syncAll") {
-      syncAll(category, payload.records || []);
+      syncAll(category, payload.records || [], !!payload.replace);
     } else if (payload.action === "syncRow") {
       syncRow(category, payload.record || {});
     } else {
@@ -102,10 +102,14 @@ function testSync() {
   });
 }
 
-function syncAll(category, records) {
+function syncAll(category, records, replace) {
   const sheet = getSheet(category);
-  sheet.clearContents();
-  sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+  if (replace) {
+    sheet.clearContents();
+    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+  } else if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+  }
 
   if (!records.length) {
     return;
@@ -114,7 +118,8 @@ function syncAll(category, records) {
   const rows = records.map(function(record) {
     return toRow(record);
   });
-  sheet.getRange(2, 1, rows.length, HEADERS.length).setValues(rows);
+  const startRow = Math.max(sheet.getLastRow() + 1, 2);
+  sheet.getRange(startRow, 1, rows.length, HEADERS.length).setValues(rows);
 }
 
 function syncRow(category, record) {

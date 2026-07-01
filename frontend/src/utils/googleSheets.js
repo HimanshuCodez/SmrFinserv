@@ -21,7 +21,7 @@ export const syncToGoogleSheets = async (data, category, webAppUrl) => {
   }
 };
 
-export const syncAllToGoogleSheets = async (records, category, webAppUrl) => {
+export const syncAllToGoogleSheets = async (records, category, webAppUrl, replace = false) => {
   if (!webAppUrl) {
     console.error("Google Apps Script Web App URL is not provided.");
     throw new Error("Google Apps Script Web App URL is not provided.");
@@ -35,6 +35,7 @@ export const syncAllToGoogleSheets = async (records, category, webAppUrl) => {
         action: "syncAll",
         category: category,
         records: records,
+        replace: replace,
       }),
     });
   } catch (error) {

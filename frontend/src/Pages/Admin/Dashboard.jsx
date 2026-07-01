@@ -927,6 +927,7 @@ const SyncSettings = ({ isMobile }) => {
   const [saving, setSaving] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
   const [testing, setTesting] = useState(false);
+  const BATCH_SIZE = 75;
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -1013,7 +1014,11 @@ const SyncSettings = ({ isMobile }) => {
             });
             return rest;
           });
-          await syncAllToGoogleSheets(recordsToSync, cat, url);
+
+          for (let i = 0; i < recordsToSync.length; i += BATCH_SIZE) {
+            const batch = recordsToSync.slice(i, i + BATCH_SIZE);
+            await syncAllToGoogleSheets(batch, cat, url, i === 0);
+          }
         }
       }
       toast.success("All data synced successfully!");
