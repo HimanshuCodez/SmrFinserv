@@ -422,6 +422,104 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
     </div>
   );
 
+  const renderFileInput = (label, file, setFile, fieldName, accept = "image/*,.pdf,application/pdf") => {
+    const existingPhotoUrl = form[fieldName]; 
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        <label style={labelStyle}>{label}</label>
+        
+        {file ? (
+          <div style={{ 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "space-between", 
+            padding: "8px 12px", 
+            background: "#f8fafc", 
+            border: "1px dashed #cbd5e1", 
+            borderRadius: 8,
+            gap: 10
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              {file.type?.startsWith("image/") ? (
+                <img 
+                  src={URL.createObjectURL(file)} 
+                  alt="preview" 
+                  style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} 
+                />
+              ) : (
+                <span style={{ fontSize: 24 }}>📄</span>
+              )}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ 
+                  fontSize: 12, 
+                  fontWeight: 600, 
+                  color: "#1e293b", 
+                  whiteSpace: "nowrap", 
+                  overflow: "hidden", 
+                  textOverflow: "ellipsis" 
+                }}>
+                  {file.name}
+                </div>
+                <div style={{ fontSize: 10, color: "#64748b" }}>
+                  {(file.size / 1024).toFixed(1)} KB
+                </div>
+              </div>
+            </div>
+            <button 
+              type="button"
+              onClick={() => setFile(null)}
+              style={{ 
+                background: "#fee2e2", 
+                border: "none", 
+                color: "#ef4444", 
+                borderRadius: "50%", 
+                width: 24, 
+                height: 24, 
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "center", 
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: "bold",
+                flexShrink: 0
+              }}
+              title="Remove document"
+            >
+              &times;
+            </button>
+          </div>
+        ) : (
+          <div style={{ position: "relative" }}>
+            <input 
+              type="file" 
+              accept={accept} 
+              onChange={e => {
+                if (e.target.files && e.target.files[0]) {
+                  setFile(e.target.files[0]);
+                }
+              }} 
+              style={inputStyle} 
+            />
+            {existingPhotoUrl && (
+              <div style={{ marginTop: 4, fontSize: 11 }}>
+                <span style={{ color: "#16a34a", fontWeight: 600 }}>✓ Already Uploaded: </span>
+                <a 
+                  href={existingPhotoUrl} 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  style={{ color: "#1e90ff", textDecoration: "underline" }}
+                >
+                  View Document
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div>
       <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, marginBottom: 20 }}>Fill Data Records</h1>
@@ -543,43 +641,17 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
             {renderField("Remarks", "remarks")}
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <label style={labelStyle}>Aadhaar Card Photo (Front)</label>
-            <input type="file" accept="image/*,.pdf,application/pdf" onChange={e => setAadhaarFrontFile(e.target.files[0])} style={inputStyle} />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <label style={labelStyle}>Aadhaar Card Photo (Back)</label>
-            <input type="file" accept="image/*,.pdf,application/pdf" onChange={e => setAadhaarBackFile(e.target.files[0])} style={inputStyle} />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <label style={labelStyle}>Pan Card Photo (Front)</label>
-            <input type="file" accept="image/*,.pdf,application/pdf" onChange={e => setPanFrontFile(e.target.files[0])} style={inputStyle} />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <label style={labelStyle}>Pan Card Photo (Back)</label>
-            <input type="file" accept="image/*,.pdf,application/pdf" onChange={e => setPanBackFile(e.target.files[0])} style={inputStyle} />
-          </div>
-          {form.category === "Motor" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              <label style={labelStyle}>Policy Document</label>
-              <input type="file" accept="image/*,.pdf,application/pdf" onChange={e => setPolicyDocFile(e.target.files[0])} style={inputStyle} />
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <label style={labelStyle}>{form.category === "Motor" ? "Misc Document" : "Policy Document"}</label>
-            <input type="file" accept="image/*,.pdf,application/pdf" onChange={e => setPolicyFile(e.target.files[0])} style={inputStyle} />
-          </div>
+          {renderFileInput("Aadhaar Card Photo (Front)", aadhaarFrontFile, setAadhaarFrontFile, "aadhaarFrontPhoto")}
+          {renderFileInput("Aadhaar Card Photo (Back)", aadhaarBackFile, setAadhaarBackFile, "aadhaarBackPhoto")}
+          {renderFileInput("Pan Card Photo (Front)", panFrontFile, setPanFrontFile, "panFrontPhoto")}
+          {renderFileInput("Pan Card Photo (Back)", panBackFile, setPanBackFile, "panBackPhoto")}
+          {form.category === "Motor" && renderFileInput("Policy Document", policyDocFile, setPolicyDocFile, "policyDocPhoto")}
+          {renderFileInput(form.category === "Motor" ? "Misc Document" : "Policy Document", policyFile, setPolicyFile, "policyPhoto")}
 
           {form.category === "SME" && (
             <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                <label style={labelStyle}>Invoice PDF</label>
-                <input type="file" accept="image/*,.pdf,application/pdf" onChange={e => setInvoiceFile(e.target.files[0])} style={inputStyle} />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                <label style={labelStyle}>GST PDF</label>
-                <input type="file" accept="image/*,.pdf,application/pdf" onChange={e => setGstFile(e.target.files[0])} style={inputStyle} />
-              </div>
+              {renderFileInput("Invoice PDF", invoiceFile, setInvoiceFile, "invoicePhoto")}
+              {renderFileInput("GST PDF", gstFile, setGstFile, "gstPhoto")}
             </>
           )}
 
