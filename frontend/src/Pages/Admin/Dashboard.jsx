@@ -1256,10 +1256,10 @@ const PersonForm = ({ isMobile, type }) => {
     try {
       const timestamp = Date.now();
       const imageUrls = await Promise.all(
-        images.map((file, i) => uploadPersonFile(file, `${collectionName}/${timestamp}_image_${i}_${file.name}`))
+        images.map((file, i) => uploadPersonFile(file, `dataRecords/${collectionName}/${timestamp}_image_${i}_${file.name}`))
       );
       const pdfUrls = await Promise.all(
-        pdfs.map((file, i) => uploadPersonFile(file, `${collectionName}/${timestamp}_pdf_${i}_${file.name}`))
+        pdfs.map((file, i) => uploadPersonFile(file, `dataRecords/${collectionName}/${timestamp}_pdf_${i}_${file.name}`))
       );
 
       const finalQualification = form.qualification === "Other" ? form.customQualification : form.qualification;
