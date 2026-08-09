@@ -1378,10 +1378,7 @@ const PersonList = ({ isMobile, type }) => {
   };
 
   return (
-    <div style={{ marginTop: 32 }}>
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ color: "#1e293b", fontSize: isMobile ? 18 : 20, fontWeight: 800, fontFamily: "'Playfair Display', serif" }}>All {label}</h2>
-      </div>
+    <div>
       <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
@@ -1456,20 +1453,43 @@ const PersonList = ({ isMobile, type }) => {
   );
 };
 
-const EmployeeConsultantData = ({ isMobile }) => (
+const EmployeeData = ({ isMobile }) => (
   <div>
     <div style={{ marginBottom: 28 }}>
-      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>Employee & Consultant Data</h1>
-      <p style={{ color: "#64748b", fontSize: 13 }}>Add and manage employee and consultant records</p>
+      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>Employee Data</h1>
+      <p style={{ color: "#64748b", fontSize: 13 }}>Add a new employee record</p>
     </div>
-
     <PersonForm isMobile={isMobile} type="Employee" />
-    <PersonList isMobile={isMobile} type="Employee" />
+  </div>
+);
 
-    <div style={{ marginTop: 48, paddingTop: 32, borderTop: "1px solid #e2e8f0" }}>
-      <PersonForm isMobile={isMobile} type="Consultant" />
-      <PersonList isMobile={isMobile} type="Consultant" />
+const ConsultantData = ({ isMobile }) => (
+  <div>
+    <div style={{ marginBottom: 28 }}>
+      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>Consultant Data</h1>
+      <p style={{ color: "#64748b", fontSize: 13 }}>Add a new consultant record</p>
     </div>
+    <PersonForm isMobile={isMobile} type="Consultant" />
+  </div>
+);
+
+const AllEmployees = ({ isMobile }) => (
+  <div>
+    <div style={{ marginBottom: 28 }}>
+      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>All Employees</h1>
+      <p style={{ color: "#64748b", fontSize: 13 }}>View and manage saved employee records</p>
+    </div>
+    <PersonList isMobile={isMobile} type="Employee" />
+  </div>
+);
+
+const AllConsultants = ({ isMobile }) => (
+  <div>
+    <div style={{ marginBottom: 28 }}>
+      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>All Consultants</h1>
+      <p style={{ color: "#64748b", fontSize: 13 }}>View and manage saved consultant records</p>
+    </div>
+    <PersonList isMobile={isMobile} type="Consultant" />
   </div>
 );
 
@@ -1525,6 +1545,9 @@ export default function Dashboard() {
     { key: "records", label: "Record Data", icon: "📊", admin: false },
     { key: "userrecord", label: "Find Data", icon: "🗂️", admin: true },
     { key: "employees", label: "Employee Data", icon: "🧑‍💼", admin: true },
+    { key: "consultants", label: "Consultant Data", icon: "🧑‍🏫", admin: true },
+    { key: "allEmployees", label: "All Employees", icon: "🧑‍🤝‍🧑", admin: true },
+    { key: "allConsultants", label: "All Consultants", icon: "👥", admin: true },
     { key: "sync", label: "Sync Settings", icon: "⚙️", admin: true },
   ];
 
@@ -1585,7 +1608,10 @@ export default function Dashboard() {
           {active === "records" && <DataRecord isMobile={isMobile} currentUser={currentUser} />}
           {active === "create" && <CreateUser isMobile={isMobile} />}
           {active === "userrecord" && <UserRecord isMobile={isMobile} currentUser={currentUser} />}
-          {active === "employees" && <EmployeeConsultantData isMobile={isMobile} />}
+          {active === "employees" && <EmployeeData isMobile={isMobile} />}
+          {active === "consultants" && <ConsultantData isMobile={isMobile} />}
+          {active === "allEmployees" && <AllEmployees isMobile={isMobile} />}
+          {active === "allConsultants" && <AllConsultants isMobile={isMobile} />}
           {active === "sync" && <SyncSettings isMobile={isMobile} />}
         </main>
       </div>
