@@ -22,6 +22,16 @@ service cloud.firestore {
     match /settings/{settingId} {
       allow read, write: if true;
     }
+
+    // Allow access to 'employees' for the admin dashboard
+    match /employees/{employeeId} {
+      allow read, write: if true;
+    }
+
+    // Allow access to 'consultants' for the admin dashboard
+    match /consultants/{consultantId} {
+      allow read, write: if true;
+    }
   }
 }
 

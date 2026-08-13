@@ -1,4 +1,5 @@
 const SPREADSHEET_ID = "1Ftu7ivwR8aWZ8g3tgvLmikIB7D93eHaaVoINMZLlCuE";
+const ALL_DATA_SHEET_NAME = "All Data";
 
 const HEADERS = [
   "id",
@@ -109,9 +110,7 @@ function parsePayload(e) {
 }
 
 function setupSheets() {
-  ["Motor", "Health", "SME", "Life", "MutualFund"].forEach(function(category) {
-    getSheet(category);
-  });
+  getSheet();
 }
 
 function testSync() {
@@ -129,7 +128,7 @@ function testSync() {
 }
 
 function syncAll(category, records, replace) {
-  const sheet = getSheet(category);
+  const sheet = getSheet();
   if (replace) {
     sheet.clearContents();
     sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
@@ -149,7 +148,7 @@ function syncAll(category, records, replace) {
 }
 
 function syncRow(category, record) {
-  const sheet = getSheet(category);
+  const sheet = getSheet();
   const id = record.id || "";
   const row = toRow(record);
 
@@ -172,9 +171,9 @@ function syncRow(category, record) {
   sheet.appendRow(row);
 }
 
-function getSheet(category) {
+function getSheet() {
   const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = spreadsheet.getSheetByName(category) || spreadsheet.insertSheet(category);
+  const sheet = spreadsheet.getSheetByName(ALL_DATA_SHEET_NAME) || spreadsheet.insertSheet(ALL_DATA_SHEET_NAME);
   const firstRow = sheet.getRange(1, 1, 1, HEADERS.length).getValues()[0];
   const hasHeaders = firstRow.some(function(value) {
     return value !== "";

@@ -135,7 +135,7 @@ const COMPANIES_BY_CATEGORY = {
 };
 
 const SYNC_CATEGORIES = ["Motor", "Health", "SME", "Life", "MutualFund"];
-const SHEET_BACKFILL_VERSION = "v1";
+const SHEET_BACKFILL_VERSION = "v2";
 const SHEET_BATCH_SIZE = 75;
 
 const stripSheetOnlyFields = (record) => {
@@ -156,10 +156,11 @@ const stripSheetOnlyFields = (record) => {
   return cleaned;
 };
 
-const syncCategoryRecordsToSheet = async (records, category, webAppUrl, replace = false) => {
-  for (let i = 0; i < records.length; i += SHEET_BATCH_SIZE) {
-    const batch = records.slice(i, i + SHEET_BATCH_SIZE).map(stripSheetOnlyFields);
-    await syncAllToGoogleSheets(batch, category, webAppUrl, replace && i === 0);
+const syncEntriesToSheet = async (entries, webAppUrl, replace = false) => {
+  for (let i = 0; i < entries.length; i += SHEET_BATCH_SIZE) {
+    const batch = entries.slice(i, i + SHEET_BATCH_SIZE).map(stripSheetOnlyFields);
+    const batchCategory = batch[0]?.category || SYNC_CATEGORIES[0];
+    await syncAllToGoogleSheets(batch, batchCategory, webAppUrl, replace && i === 0);
   }
 };
 
@@ -185,11 +186,8 @@ const syncExistingRecordsToSheet = async (webAppUrl) => {
       return aTime - bTime;
     });
 
-  for (const category of SYNC_CATEGORIES) {
-    const categoryEntries = allEntries.filter((entry) => entry.category === category);
-    if (categoryEntries.length > 0) {
-      await syncCategoryRecordsToSheet(categoryEntries, category, webAppUrl, true);
-    }
+  if (allEntries.length > 0) {
+    await syncEntriesToSheet(allEntries, webAppUrl, true);
   }
 
   await setDoc(
@@ -1134,11 +1132,8 @@ const SyncSettings = ({ isMobile }) => {
           return aTime - bTime;
         });
 
-      for (const cat of SYNC_CATEGORIES) {
-        const catEntries = allEntries.filter(e => e.category === cat);
-        if (catEntries.length > 0) {
-          await syncCategoryRecordsToSheet(catEntries, cat, url, true);
-        }
+      if (allEntries.length > 0) {
+        await syncEntriesToSheet(allEntries, url, true);
       }
       toast.success("All data synced successfully!");
     } catch (e) {
@@ -1153,7 +1148,7 @@ const SyncSettings = ({ isMobile }) => {
     <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 20 : 32, boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
       <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, marginBottom: 20 }}>Google Sheets Synchronization</h1>
       <p style={{ color: "#64748b", marginBottom: 24, fontSize: 14, lineHeight: 1.5 }}>
-        Automatically sync database records to your Google Sheet. When you add or edit a record, it will immediately reflect in the corresponding sheet tab.
+        Automatically sync database records to your Google Sheet. When you add or edit a record, it will immediately reflect in the single "All Data" sheet tab, across every category.
       </p>
       
       <div style={{ marginBottom: 24 }}>
