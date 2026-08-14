@@ -77,9 +77,7 @@ const Footer = () => {
                 <ul className="space-y-1 text-blue-300">
                   <li className="mb-5">
                     {" "}
-                    Address 1 : A-304, RAJ HANS KUTUMB, RAJ HANS KUTUMB 4/4
-                    AHINSA KHAND -1, Indirapuram,Ghaziabad, Ghaziabad, Uttar
-                    Pradesh, 201014
+                    Address 1 : A-120,1st Floor, Raj Hans Kutumb , Indrapuram Ghaziabad,201014
                   </li>
                   <li>
                     {" "}
