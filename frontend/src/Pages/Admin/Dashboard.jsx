@@ -39,15 +39,48 @@ const EmptyState = ({ icon, title, subtitle }) => (
   </div>
 );
 
-const USER_ROLES = ["User", "Employee", "Advisor", "Admin"];
+const PERMISSION_OPTIONS = [
+  { key: "records", label: "Data Records" },
+  { key: "employees", label: "Employee Data" },
+  { key: "consultants", label: "Advisor Data" },
+];
+
+// Users created before multi-permission support only had a single `role`.
+// Map those legacy roles to an equivalent permission set so old accounts keep working.
+const LEGACY_ROLE_PERMISSIONS = {
+  User: ["records"],
+  Employee: ["employees"],
+  Advisor: ["consultants"],
+};
+
+const getUserPermissions = (user) => {
+  if (!user) return [];
+  if (user.role === "Admin") return PERMISSION_OPTIONS.map(p => p.key);
+  if (Array.isArray(user.permissions)) return user.permissions;
+  return LEGACY_ROLE_PERMISSIONS[user.role] || ["records"];
+};
 
 const AllUsers = ({ isMobile, users, currentUser }) => {
-  const handleRoleChange = async (userId, newRole) => {
+  const handleAdminToggle = async (userId, makeAdmin) => {
     try {
-      await updateDoc(doc(db, "users", userId), { role: newRole });
-      toast.success("Role updated successfully!");
+      await updateDoc(doc(db, "users", userId), makeAdmin
+        ? { role: "Admin" }
+        : { role: "User", permissions: ["records"] });
+      toast.success("Access updated successfully!");
     } catch (e) {
-      toast.error("Error updating role: " + e.message);
+      toast.error("Error updating access: " + e.message);
+    }
+  };
+
+  const handlePermissionToggle = async (userId, permKey, checked, currentPerms) => {
+    const newPerms = checked
+      ? [...new Set([...currentPerms, permKey])]
+      : currentPerms.filter(p => p !== permKey);
+    try {
+      await updateDoc(doc(db, "users", userId), { role: "User", permissions: newPerms });
+      toast.success("Access updated successfully!");
+    } catch (e) {
+      toast.error("Error updating access: " + e.message);
     }
   };
 
@@ -76,7 +109,7 @@ const AllUsers = ({ isMobile, users, currentUser }) => {
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {["User", "Email", "Phone", "Role", "Password", "Actions"].map(h => (
+                {["User", "Email", "Phone", "Access", "Password", "Actions"].map(h => (
                   <th key={h} style={{ padding: "12px 20px", color: "#64748b", fontSize: 11, fontWeight: 700, textAlign: "left", letterSpacing: "1px", textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
@@ -84,21 +117,36 @@ const AllUsers = ({ isMobile, users, currentUser }) => {
             <tbody>
               {users.map((user) => {
                 const isSelf = currentUser && user.id === currentUser.id;
+                const isAdmin = user.role === "Admin";
+                const perms = getUserPermissions(user);
                 return (
                   <tr key={user.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
                     <td style={{ padding: "12px 20px", color: "#1e293b", fontSize: 13 }}>{user.name}</td>
                     <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.email}</td>
                     <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.phone}</td>
                     <td style={{ padding: "12px 20px" }}>
-                      <select
-                        value={user.role || "User"}
-                        onChange={e => handleRoleChange(user.id, e.target.value)}
-                        disabled={isSelf}
-                        title={isSelf ? "You cannot change your own role" : ""}
-                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0", fontSize: 12, fontWeight: 600, color: "#1e293b", background: isSelf ? "#f1f5f9" : "#fff", cursor: isSelf ? "not-allowed" : "pointer" }}
-                      >
-                        {USER_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#1e293b", cursor: isSelf ? "not-allowed" : "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={isAdmin}
+                            disabled={isSelf}
+                            onChange={e => handleAdminToggle(user.id, e.target.checked)}
+                          />
+                          Admin (Full Access)
+                        </label>
+                        {!isAdmin && PERMISSION_OPTIONS.map(opt => (
+                          <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569", cursor: isSelf ? "not-allowed" : "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={perms.includes(opt.key)}
+                              disabled={isSelf}
+                              onChange={e => handlePermissionToggle(user.id, opt.key, e.target.checked, perms)}
+                            />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
                     </td>
                     <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.password}</td>
                     <td style={{ padding: "12px 20px" }}>
@@ -1010,15 +1058,31 @@ const UserRecord = ({ isMobile, currentUser }) => {
 };
 
 const CreateUser = ({ isMobile }) => {
-  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "User", password: "" });
+  const initialFormState = { name: "", email: "", phone: "", password: "", isAdmin: false, permissions: ["records"] };
+  const [form, setForm] = useState(initialFormState);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const togglePermission = (permKey, checked) => {
+    setForm(prev => ({
+      ...prev,
+      permissions: checked
+        ? [...new Set([...prev.permissions, permKey])]
+        : prev.permissions.filter(p => p !== permKey)
+    }));
+  };
 
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      await addDoc(collection(db, "users"), { ...form, createdAt: serverTimestamp() });
-      setForm({ name: "", email: "", phone: "", role: "User", password: "" });
+      const { isAdmin, permissions, ...rest } = form;
+      await addDoc(collection(db, "users"), {
+        ...rest,
+        role: isAdmin ? "Admin" : "User",
+        permissions,
+        createdAt: serverTimestamp()
+      });
+      setForm(initialFormState);
       toast.success("User created successfully!");
     } catch (e) { toast.error(e.message); }
     setLoading(false);
@@ -1043,13 +1107,37 @@ const CreateUser = ({ isMobile }) => {
               {showPassword ? "🙈" : "👁️"}
             </button>
           </div>
-          <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, color: "#1e293b" }}>
-            <option value="User">Created User (Access: Data Records Only)</option>
-            <option value="Employee">Employee (Access: Employee Data Only)</option>
-            <option value="Advisor">Advisor (Access: Advisor Data Only)</option>
-            <option value="Admin">Admin (Full Access)</option>
-          </select>
        </div>
+
+       <div style={{ marginTop: 24, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 16 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, color: "#1e293b", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={form.isAdmin}
+              onChange={e => setForm({ ...form, isAdmin: e.target.checked })}
+            />
+            Admin (Full Access)
+          </label>
+
+          {!form.isAdmin && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>Grant access to (select any number):</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+                {PERMISSION_OPTIONS.map(opt => (
+                  <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#1e293b", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={form.permissions.includes(opt.key)}
+                      onChange={e => togglePermission(opt.key, e.target.checked)}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+       </div>
+
        <button onClick={handleSubmit} disabled={loading} style={{ marginTop: 24, background: "#1e90ff", color: "#fff", border: "none", borderRadius: 10, padding: "12px 32px", cursor: loading ? "not-allowed" : "pointer", width: isMobile ? "100%" : "auto" }}>
          {loading ? "Creating..." : "Create User"}
        </button>
@@ -1594,9 +1682,11 @@ export default function Dashboard() {
   const [users, setUsers] = useState([]);
 
   useEffect(() => {
-    if (!currentUser) return;
-    if (currentUser.role === "Employee") setActive("employees");
-    else if (currentUser.role === "Advisor") setActive("consultants");
+    if (!currentUser || currentUser.role === "Admin") return;
+    const perms = getUserPermissions(currentUser);
+    if (perms.includes("records")) setActive("records");
+    else if (perms.includes("employees")) setActive("employees");
+    else if (perms.includes("consultants")) setActive("consultants");
   }, [currentUser]);
 
   useEffect(() => {
@@ -1639,18 +1729,22 @@ export default function Dashboard() {
   if (!currentUser) return <Login onLogin={(u) => { setCurrentUser(u); localStorage.setItem("adminUser", JSON.stringify(u)); }} />;
 
   const navItems = [
-    { key: "users", label: "All Users", icon: "👥", roles: ["Admin"] },
-    { key: "create", label: "Create User", icon: "➕", roles: ["Admin"] },
-    { key: "records", label: "Record Data", icon: "📊", roles: ["Admin", "User"] },
-    { key: "userrecord", label: "Find Data", icon: "🗂️", roles: ["Admin"] },
-    { key: "employees", label: "Employee Data", icon: "🧑‍💼", roles: ["Admin", "Employee"] },
-    { key: "consultants", label: "Advisor Data", icon: "🧑‍🏫", roles: ["Admin", "Advisor"] },
-    { key: "allEmployees", label: "All Employees", icon: "🧑‍🤝‍🧑", roles: ["Admin"] },
-    { key: "allConsultants", label: "All Advisor", icon: "👥", roles: ["Admin"] },
-    { key: "sync", label: "Sync Settings", icon: "⚙️", roles: ["Admin"] },
+    { key: "users", label: "All Users", icon: "👥", adminOnly: true },
+    { key: "create", label: "Create User", icon: "➕", adminOnly: true },
+    { key: "records", label: "Record Data", icon: "📊", permission: "records" },
+    { key: "userrecord", label: "Find Data", icon: "🗂️", adminOnly: true },
+    { key: "employees", label: "Employee Data", icon: "🧑‍💼", permission: "employees" },
+    { key: "consultants", label: "Advisor Data", icon: "🧑‍🏫", permission: "consultants" },
+    { key: "allEmployees", label: "All Employees", icon: "🧑‍🤝‍🧑", adminOnly: true },
+    { key: "allConsultants", label: "All Advisor", icon: "👥", adminOnly: true },
+    { key: "sync", label: "Sync Settings", icon: "⚙️", adminOnly: true },
   ];
 
-  const filteredNavItems = navItems.filter(item => item.roles.includes(currentUser.role));
+  const isAdmin = currentUser.role === "Admin";
+  const userPermissions = getUserPermissions(currentUser);
+  const filteredNavItems = navItems.filter(item =>
+    isAdmin || (!item.adminOnly && userPermissions.includes(item.permission))
+  );
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "#f8fafc", color: "#1e293b", position: "relative", overflow: "hidden" }}>
@@ -1699,7 +1793,9 @@ export default function Dashboard() {
            </div>
            <div style={{ textAlign: "right", minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{currentUser.name}</div>
-                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>{currentUser.role}</div>
+                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  {isAdmin ? "Admin" : (PERMISSION_OPTIONS.filter(p => userPermissions.includes(p.key)).map(p => p.label).join(" + ") || "No Access")}
+                </div>
            </div>
         </header>
         <main style={{ flex: 1, padding: isMobile ? 16 : 24, overflowY: "auto", background: "#f8fafc" }}>
