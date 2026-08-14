@@ -102,11 +102,39 @@ function parsePayload(e) {
           replace: params.replace === "true" || params.replace === true
         };
       }
+
+      const decoded = decodeFormEncoded(rawContents);
+      if (decoded.payload) {
+        return JSON.parse(decoded.payload);
+      }
+      if (decoded.action) {
+        return {
+          action: decoded.action,
+          category: decoded.category,
+          record: decoded.record ? JSON.parse(decoded.record) : {},
+          records: decoded.records ? JSON.parse(decoded.records) : [],
+          replace: decoded.replace === "true"
+        };
+      }
+
       throw error;
     }
   }
 
   return {};
+}
+
+function decodeFormEncoded(rawContents) {
+  const result = {};
+  (rawContents || "").split("&").forEach(function(pair) {
+    if (!pair) return;
+    const idx = pair.indexOf("=");
+    if (idx === -1) return;
+    const key = decodeURIComponent(pair.slice(0, idx).replace(/\+/g, " "));
+    const value = decodeURIComponent(pair.slice(idx + 1).replace(/\+/g, " "));
+    result[key] = value;
+  });
+  return result;
 }
 
 function setupSheets() {
