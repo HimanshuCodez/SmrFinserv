@@ -22,28 +22,6 @@ const Logo = () => (
   </div>
 );
 
-const Badge = ({ status }) => {
-  const colors = {
-    Active: { bg: "#dcfce7", color: "#15803d", border: "#bbf7d0" },
-    Inactive: { bg: "#f1f5f9", color: "#64748b", border: "#e2e8f0" },
-    Pending: { bg: "#fef3c7", color: "#b45309", border: "#fde68a" },
-    Completed: { bg: "#dcfce7", color: "#15803d", border: "#bbf7d0" },
-    Failed: { bg: "#fee2e2", color: "#b91c1c", border: "#fecaca" },
-    Enterprise: { bg: "#e0f2fe", color: "#0369a1", border: "#bae6fd" },
-    Premium: { bg: "#f3e8ff", color: "#7e22ce", border: "#e9d5ff" },
-    Basic: { bg: "#f3f4f6", color: "#4b5563", border: "#e5e7eb" },
-    Admin: { bg: "#fdf4ff", color: "#a21caf", border: "#fae8ff" },
-  };
-  const c = colors[status] || colors.Basic;
-  return (
-    <span style={{
-      padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-      background: c.bg, color: c.color, border: `1px solid ${c.border}`,
-      letterSpacing: "0.5px", textTransform: "uppercase"
-    }}>{status}</span>
-  );
-};
-
 const EmptyState = ({ icon, title, subtitle }) => (
   <div style={{
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -61,44 +39,91 @@ const EmptyState = ({ icon, title, subtitle }) => (
   </div>
 );
 
-const AllUsers = ({ isMobile, users }) => (
-  <div>
-    <div style={{ marginBottom: 28 }}>
-      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>All Users</h1>
-      <p style={{ color: "#64748b", fontSize: 13 }}>Manage and monitor all registered users</p>
-    </div>
-    <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
-      <div style={{ padding: isMobile ? "16px" : "20px 24px", borderBottom: "1px solid #e2e8f0" }}>
-        <span style={{ color: "#1e293b", fontWeight: 700, fontSize: 15 }}>User Directory</span>
+const USER_ROLES = ["User", "Employee", "Advisor", "Admin"];
+
+const AllUsers = ({ isMobile, users, currentUser }) => {
+  const handleRoleChange = async (userId, newRole) => {
+    try {
+      await updateDoc(doc(db, "users", userId), { role: newRole });
+      toast.success("Role updated successfully!");
+    } catch (e) {
+      toast.error("Error updating role: " + e.message);
+    }
+  };
+
+  const handleRemove = async (userId, name) => {
+    if (window.confirm(`Are you sure you want to remove ${name || "this user"}?`)) {
+      try {
+        await deleteDoc(doc(db, "users", userId));
+        toast.success("User removed successfully!");
+      } catch (e) {
+        toast.error("Error removing user: " + e.message);
+      }
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>All Users</h1>
+        <p style={{ color: "#64748b", fontSize: 13 }}>Manage and monitor all registered users</p>
       </div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
-          <thead>
-            <tr style={{ background: "#f8fafc" }}>
-              {["User", "Email", "Phone", "Role", "Password"].map(h => (
-                <th key={h} style={{ padding: "12px 20px", color: "#64748b", fontSize: 11, fontWeight: 700, textAlign: "left", letterSpacing: "1px", textTransform: "uppercase" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user, idx) => (
-              <tr key={idx} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                <td style={{ padding: "12px 20px", color: "#1e293b", fontSize: 13 }}>{user.name}</td>
-                <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.email}</td>
-                <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.phone}</td>
-                <td style={{ padding: "12px 20px" }}><Badge status={user.role || "User"} /></td>
-                <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.password}</td>
+      <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
+        <div style={{ padding: isMobile ? "16px" : "20px 24px", borderBottom: "1px solid #e2e8f0" }}>
+          <span style={{ color: "#1e293b", fontWeight: 700, fontSize: 15 }}>User Directory</span>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
+            <thead>
+              <tr style={{ background: "#f8fafc" }}>
+                {["User", "Email", "Phone", "Role", "Password", "Actions"].map(h => (
+                  <th key={h} style={{ padding: "12px 20px", color: "#64748b", fontSize: 11, fontWeight: 700, textAlign: "left", letterSpacing: "1px", textTransform: "uppercase" }}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {users.map((user) => {
+                const isSelf = currentUser && user.id === currentUser.id;
+                return (
+                  <tr key={user.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                    <td style={{ padding: "12px 20px", color: "#1e293b", fontSize: 13 }}>{user.name}</td>
+                    <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.email}</td>
+                    <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.phone}</td>
+                    <td style={{ padding: "12px 20px" }}>
+                      <select
+                        value={user.role || "User"}
+                        onChange={e => handleRoleChange(user.id, e.target.value)}
+                        disabled={isSelf}
+                        title={isSelf ? "You cannot change your own role" : ""}
+                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0", fontSize: 12, fontWeight: 600, color: "#1e293b", background: isSelf ? "#f1f5f9" : "#fff", cursor: isSelf ? "not-allowed" : "pointer" }}
+                      >
+                        {USER_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.password}</td>
+                    <td style={{ padding: "12px 20px" }}>
+                      <button
+                        onClick={() => handleRemove(user.id, user.name)}
+                        disabled={isSelf}
+                        title={isSelf ? "You cannot remove your own account" : ""}
+                        style={{ background: isSelf ? "#f1f5f9" : "#ef4444", color: isSelf ? "#94a3b8" : "#fff", border: "none", borderRadius: 4, padding: "6px 10px", fontSize: 10, fontWeight: 700, cursor: isSelf ? "not-allowed" : "pointer" }}
+                      >
+                        REMOVE
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {users.length === 0 && (
+          <EmptyState icon="👥" title="No Users Found" subtitle="Registered users will appear here." />
+        )}
       </div>
-      {users.length === 0 && (
-        <EmptyState icon="👥" title="No Users Found" subtitle="Registered users will appear here." />
-      )}
     </div>
-  </div>
-);
+  );
+};
 
 const MOTOR_VEHICLE_TYPES = [
   "CAR", "TWO WHEELER: SCOOTY", "TWO WHEELER: BIKE",
@@ -987,6 +1012,7 @@ const UserRecord = ({ isMobile, currentUser }) => {
 const CreateUser = ({ isMobile }) => {
   const [form, setForm] = useState({ name: "", email: "", phone: "", role: "User", password: "" });
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -1005,9 +1031,22 @@ const CreateUser = ({ isMobile }) => {
           <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Full Name" style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, color: "#1e293b" }} />
           <input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="Email" style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, color: "#1e293b" }} />
           <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="Phone" style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, color: "#1e293b" }} />
-          <input value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Password" type="password" style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, color: "#1e293b" }} />
+          <div style={{ position: "relative" }}>
+            <input value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Password" type={showPassword ? "text" : "password"} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, paddingRight: 44, color: "#1e293b", width: "100%" }} />
+            <button
+              type="button"
+              onClick={() => setShowPassword(prev => !prev)}
+              tabIndex={-1}
+              style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", background: "transparent", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16, padding: 8, display: "flex", alignItems: "center", justifyContent: "center" }}
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? "🙈" : "👁️"}
+            </button>
+          </div>
           <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, color: "#1e293b" }}>
             <option value="User">Created User (Access: Data Records Only)</option>
+            <option value="Employee">Employee (Access: Employee Data Only)</option>
+            <option value="Advisor">Advisor (Access: Advisor Data Only)</option>
             <option value="Admin">Admin (Full Access)</option>
           </select>
        </div>
@@ -1221,10 +1260,13 @@ const uploadPersonFile = async (file, path) => {
 
 const PersonForm = ({ isMobile, type }) => {
   const collectionName = type === "Employee" ? "employees" : "consultants";
-  const initialFormState = { name: "", number: "", email: "", qualification: "", customQualification: "" };
+  const displayType = type === "Employee" ? "Employee" : "Advisor";
+  const idFieldKey = type === "Employee" ? "employeeId" : "advisorId";
+  const initialFormState = { name: "", number: "", email: "", qualification: "", customQualification: "", idNumber: "" };
   const [form, setForm] = useState(initialFormState);
   const [images, setImages] = useState([]);
   const [pdfs, setPdfs] = useState([]);
+  const [photoFile, setPhotoFile] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const inputStyle = { background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: 10, color: "#1e293b", outline: "none", width: "100%" };
@@ -1238,6 +1280,11 @@ const PersonForm = ({ isMobile, type }) => {
   const handleAddPdfs = (e) => {
     const files = Array.from(e.target.files || []);
     setPdfs(prev => [...prev, ...files]);
+    e.target.value = "";
+  };
+  const handlePhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) setPhotoFile(file);
     e.target.value = "";
   };
 
@@ -1256,6 +1303,9 @@ const PersonForm = ({ isMobile, type }) => {
       const pdfUrls = await Promise.all(
         pdfs.map((file, i) => uploadPersonFile(file, `dataRecords/${collectionName}/${timestamp}_pdf_${i}_${file.name}`))
       );
+      const photoUrl = photoFile
+        ? await uploadPersonFile(photoFile, `dataRecords/${collectionName}/${timestamp}_photo_${photoFile.name}`)
+        : "";
 
       const finalQualification = form.qualification === "Other" ? form.customQualification : form.qualification;
 
@@ -1264,20 +1314,46 @@ const PersonForm = ({ isMobile, type }) => {
         number: form.number,
         email: form.email,
         qualification: finalQualification,
+        [idFieldKey]: form.idNumber,
+        photoUrl,
         imageUrls,
         pdfUrls,
         createdAt: serverTimestamp()
       });
 
-      toast.success(`${type} saved successfully!`);
+      toast.success(`${displayType} saved successfully!`);
       setForm(initialFormState);
       setImages([]);
       setPdfs([]);
+      setPhotoFile(null);
     } catch (err) {
-      toast.error(`Error saving ${type.toLowerCase()}: ` + err.message);
+      toast.error(`Error saving ${displayType.toLowerCase()}: ` + err.message);
     }
     setLoading(false);
   };
+
+  const renderSinglePhoto = (label, file, onAdd, onRemove) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <label style={labelStyle}>{label}</label>
+      {file ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <img src={URL.createObjectURL(file)} alt="preview" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{file.name}</div>
+              <div style={{ fontSize: 10, color: "#64748b" }}>{(file.size / 1024).toFixed(1)} KB</div>
+            </div>
+          </div>
+          <button type="button" onClick={onRemove} style={{ background: "#fee2e2", border: "none", color: "#ef4444", borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 14, fontWeight: "bold", flexShrink: 0 }}>&times;</button>
+        </div>
+      ) : (
+        <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 12px", border: "1px dashed #1e90ff", borderRadius: 8, cursor: "pointer", color: "#1e90ff", fontSize: 13, fontWeight: 700, background: "#f0f9ff" }}>
+          <span>+</span> {label}
+          <input type="file" accept="image/*" onChange={onAdd} style={{ display: "none" }} />
+        </label>
+      )}
+    </div>
+  );
 
   const renderFileList = (label, files, onAdd, onRemove, accept) => (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1308,7 +1384,7 @@ const PersonForm = ({ isMobile, type }) => {
   return (
     <div>
       <h2 style={{ color: "#1e293b", fontSize: isMobile ? 18 : 20, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 16 }}>
-        {type === "Employee" ? "Create Employee" : "Create Consultant"}
+        Create {displayType}
       </h2>
       <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 20 : 32, boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
         <form onSubmit={handleSubmit} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 20 }}>
@@ -1324,6 +1400,10 @@ const PersonForm = ({ isMobile, type }) => {
             <label style={labelStyle}>Email</label>
             <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} style={inputStyle} placeholder="Enter Email" />
           </div>
+          <div>
+            <label style={labelStyle}>{displayType} ID</label>
+            <input type="text" value={form.idNumber} onChange={e => setForm({ ...form, idNumber: e.target.value })} style={inputStyle} placeholder={`Enter ${displayType} ID`} />
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: form.qualification === "Other" ? 10 : 0 }}>
             <label style={labelStyle}>Qualification</label>
             <select value={form.qualification} onChange={e => setForm({ ...form, qualification: e.target.value })} style={inputStyle}>
@@ -1335,11 +1415,12 @@ const PersonForm = ({ isMobile, type }) => {
             )}
           </div>
 
+          {renderSinglePhoto(`${displayType} Photo`, photoFile, handlePhotoChange, () => setPhotoFile(null))}
           {renderFileList("Upload Image", images, handleAddImages, (idx) => setImages(prev => prev.filter((_, i) => i !== idx)), "image/*")}
           {renderFileList("Upload PDF", pdfs, handleAddPdfs, (idx) => setPdfs(prev => prev.filter((_, i) => i !== idx)), "application/pdf")}
 
           <button type="submit" disabled={loading} style={{ gridColumn: "1 / -1", background: "#1e90ff", color: "#fff", border: "none", borderRadius: 8, padding: 16, fontWeight: 700, fontSize: 16, cursor: loading ? "not-allowed" : "pointer", marginTop: 10 }}>
-            {loading ? "Uploading & Saving..." : `Save ${type}`}
+            {loading ? "Uploading & Saving..." : `Save ${displayType}`}
           </button>
         </form>
       </div>
@@ -1349,7 +1430,9 @@ const PersonForm = ({ isMobile, type }) => {
 
 const PersonList = ({ isMobile, type }) => {
   const collectionName = type === "Employee" ? "employees" : "consultants";
-  const label = type === "Employee" ? "Employees" : "Consultants";
+  const displayType = type === "Employee" ? "Employee" : "Advisor";
+  const idFieldKey = type === "Employee" ? "employeeId" : "advisorId";
+  const label = type === "Employee" ? "Employees" : "Advisors";
   const [items, setItems] = useState([]);
   const [viewingDocs, setViewingDocs] = useState(null);
 
@@ -1362,10 +1445,10 @@ const PersonList = ({ isMobile, type }) => {
   }, [collectionName]);
 
   const handleDelete = async (id) => {
-    if (window.confirm(`Are you sure you want to delete this ${type.toLowerCase()}?`)) {
+    if (window.confirm(`Are you sure you want to delete this ${displayType.toLowerCase()}?`)) {
       try {
         await deleteDoc(doc(db, collectionName, id));
-        toast.success(`${type} deleted successfully!`);
+        toast.success(`${displayType} deleted successfully!`);
       } catch (e) {
         toast.error("Error deleting record: " + e.message);
       }
@@ -1379,7 +1462,7 @@ const PersonList = ({ isMobile, type }) => {
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {["Name", "Number", "Email", "Qualification", "Docs", "Actions"].map(h => (
+                {["Photo", `${displayType} ID`, "Name", "Number", "Email", "Qualification", "Docs", "Actions"].map(h => (
                   <th key={h} style={{ padding: "12px 20px", color: "#64748b", fontSize: 11, fontWeight: 700, textAlign: "left", letterSpacing: "1px", textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
@@ -1387,6 +1470,16 @@ const PersonList = ({ isMobile, type }) => {
             <tbody>
               {items.map(item => (
                 <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                  <td style={{ padding: "12px 20px" }}>
+                    {item.photoUrl ? (
+                      <img src={item.photoUrl} alt={item.name} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
+                    ) : (
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>
+                        {type === "Employee" ? "🧑‍💼" : "🧑‍🏫"}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{item[idFieldKey] || "-"}</td>
                   <td style={{ padding: "12px 20px", color: "#1e293b", fontSize: 13 }}>{item.name}</td>
                   <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{item.number}</td>
                   <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{item.email}</td>
@@ -1413,7 +1506,7 @@ const PersonList = ({ isMobile, type }) => {
           </table>
         </div>
         {items.length === 0 && (
-          <EmptyState icon={type === "Employee" ? "🧑‍💼" : "🧑‍🏫"} title={`No ${label} Found`} subtitle={`Saved ${type.toLowerCase()} records will appear here.`} />
+          <EmptyState icon={type === "Employee" ? "🧑‍💼" : "🧑‍🏫"} title={`No ${label} Found`} subtitle={`Saved ${displayType.toLowerCase()} records will appear here.`} />
         )}
       </div>
 
@@ -1426,6 +1519,11 @@ const PersonList = ({ isMobile, type }) => {
                 <button onClick={() => setViewingDocs(null)} style={{ background: "transparent", border: "none", color: "#64748b", fontSize: 24, cursor: "pointer" }}>&times;</button>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {viewingDocs.photoUrl && (
+                  <a href={viewingDocs.photoUrl} target="_blank" rel="noreferrer" style={{ color: "#1e90ff", fontSize: 13, fontWeight: 700, textDecoration: "none", background: "#f0f9ff", padding: "12px 16px", borderRadius: 8, border: "1px solid #e0f2fe", textAlign: "center" }}>
+                    {type === "Employee" ? "EMPLOYEE PHOTO" : "ADVISOR PHOTO"}
+                  </a>
+                )}
                 {(viewingDocs.imageUrls || []).map((url, i) => (
                   <a key={`img-${i}`} href={url} target="_blank" rel="noreferrer" style={{ color: "#1e90ff", fontSize: 13, fontWeight: 700, textDecoration: "none", background: "#f0f9ff", padding: "12px 16px", borderRadius: 8, border: "1px solid #e0f2fe", textAlign: "center" }}>
                     IMAGE {i + 1}
@@ -1436,7 +1534,7 @@ const PersonList = ({ isMobile, type }) => {
                     PDF {i + 1}
                   </a>
                 ))}
-                {(!viewingDocs.imageUrls || viewingDocs.imageUrls.length === 0) && (!viewingDocs.pdfUrls || viewingDocs.pdfUrls.length === 0) && (
+                {!viewingDocs.photoUrl && (!viewingDocs.imageUrls || viewingDocs.imageUrls.length === 0) && (!viewingDocs.pdfUrls || viewingDocs.pdfUrls.length === 0) && (
                   <p style={{ textAlign: "center", color: "#64748b", fontSize: 14 }}>No documents uploaded for this record.</p>
                 )}
               </div>
@@ -1461,8 +1559,8 @@ const EmployeeData = ({ isMobile }) => (
 const ConsultantData = ({ isMobile }) => (
   <div>
     <div style={{ marginBottom: 28 }}>
-      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>Consultant Data</h1>
-      <p style={{ color: "#64748b", fontSize: 13 }}>Add a new consultant record</p>
+      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>Advisor Data</h1>
+      <p style={{ color: "#64748b", fontSize: 13 }}>Add a new advisor record</p>
     </div>
     <PersonForm isMobile={isMobile} type="Consultant" />
   </div>
@@ -1481,8 +1579,8 @@ const AllEmployees = ({ isMobile }) => (
 const AllConsultants = ({ isMobile }) => (
   <div>
     <div style={{ marginBottom: 28 }}>
-      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>All Consultants</h1>
-      <p style={{ color: "#64748b", fontSize: 13 }}>View and manage saved consultant records</p>
+      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>All Advisor</h1>
+      <p style={{ color: "#64748b", fontSize: 13 }}>View and manage saved advisor records</p>
     </div>
     <PersonList isMobile={isMobile} type="Consultant" />
   </div>
@@ -1494,6 +1592,12 @@ export default function Dashboard() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [collapsed, setCollapsed] = useState(window.innerWidth < 1024);
   const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role === "Employee") setActive("employees");
+    else if (currentUser.role === "Advisor") setActive("consultants");
+  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser?.role === "Admin") {
@@ -1535,18 +1639,18 @@ export default function Dashboard() {
   if (!currentUser) return <Login onLogin={(u) => { setCurrentUser(u); localStorage.setItem("adminUser", JSON.stringify(u)); }} />;
 
   const navItems = [
-    { key: "users", label: "All Users", icon: "👥", admin: true },
-    { key: "create", label: "Create User", icon: "➕", admin: true },
-    { key: "records", label: "Record Data", icon: "📊", admin: false },
-    { key: "userrecord", label: "Find Data", icon: "🗂️", admin: true },
-    { key: "employees", label: "Employee Data", icon: "🧑‍💼", admin: true },
-    { key: "consultants", label: "Consultant Data", icon: "🧑‍🏫", admin: true },
-    { key: "allEmployees", label: "All Employees", icon: "🧑‍🤝‍🧑", admin: true },
-    { key: "allConsultants", label: "All Consultants", icon: "👥", admin: true },
-    { key: "sync", label: "Sync Settings", icon: "⚙️", admin: true },
+    { key: "users", label: "All Users", icon: "👥", roles: ["Admin"] },
+    { key: "create", label: "Create User", icon: "➕", roles: ["Admin"] },
+    { key: "records", label: "Record Data", icon: "📊", roles: ["Admin", "User"] },
+    { key: "userrecord", label: "Find Data", icon: "🗂️", roles: ["Admin"] },
+    { key: "employees", label: "Employee Data", icon: "🧑‍💼", roles: ["Admin", "Employee"] },
+    { key: "consultants", label: "Advisor Data", icon: "🧑‍🏫", roles: ["Admin", "Advisor"] },
+    { key: "allEmployees", label: "All Employees", icon: "🧑‍🤝‍🧑", roles: ["Admin"] },
+    { key: "allConsultants", label: "All Advisor", icon: "👥", roles: ["Admin"] },
+    { key: "sync", label: "Sync Settings", icon: "⚙️", roles: ["Admin"] },
   ];
 
-  const filteredNavItems = currentUser.role === "Admin" ? navItems : navItems.filter(item => !item.admin);
+  const filteredNavItems = navItems.filter(item => item.roles.includes(currentUser.role));
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "#f8fafc", color: "#1e293b", position: "relative", overflow: "hidden" }}>
@@ -1599,7 +1703,7 @@ export default function Dashboard() {
            </div>
         </header>
         <main style={{ flex: 1, padding: isMobile ? 16 : 24, overflowY: "auto", background: "#f8fafc" }}>
-          {active === "users" && <AllUsers isMobile={isMobile} users={users} />}
+          {active === "users" && <AllUsers isMobile={isMobile} users={users} currentUser={currentUser} />}
           {active === "records" && <DataRecord isMobile={isMobile} currentUser={currentUser} />}
           {active === "create" && <CreateUser isMobile={isMobile} />}
           {active === "userrecord" && <UserRecord isMobile={isMobile} currentUser={currentUser} />}
