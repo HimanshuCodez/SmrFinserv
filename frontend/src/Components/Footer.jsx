@@ -79,13 +79,7 @@ const Footer = () => {
                     {" "}
                     Address 1 : A-120,1st Floor, Raj Hans Kutumb , Indrapuram Ghaziabad,201014
                   </li>
-                  <li>
-                    {" "}
-                    Address 2 : Building No./Flat No.: 195-A Road/Street: Nyay
-                    Khand -1 Locality/Sub Locality: Nyay Khand 1
-                    City/Town/Village: Ghaziabad District: Ghaziabad State:
-                    Uttar Pradesh PIN Code: 201014
-                  </li>
+                 
                 </ul>
               </div>
               <div>
