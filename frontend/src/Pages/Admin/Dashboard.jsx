@@ -388,6 +388,10 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
         vehicleType: finalVehicleType,
         addedBy: currentUser?.id || "admin",
         addedByName: currentUser?.name || "Super Admin",
+        advisorId: currentUser?.role === "Advisor" ? currentUser.consultantId
+          : currentUser?.role === "SubAdvisor" ? currentUser.parentAdvisorId
+          : (recordToEdit?.advisorId || ""),
+        subAdvisorId: currentUser?.role === "SubAdvisor" ? currentUser.consultantId : (recordToEdit?.subAdvisorId || ""),
       };
 
       // Remove custom fields from firestore data
@@ -735,7 +739,7 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
   );
 };
 
-const UserRecord = ({ isMobile, currentUser }) => {
+const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "admin" }) => {
   const [entries, setEntries] = useState([]);
   const [filter, setFilter] = useState("Motor");
   const [searchTerm, setSearchTerm] = useState("");
@@ -754,11 +758,14 @@ const UserRecord = ({ isMobile, currentUser }) => {
 
   const filteredEntries = entries.filter(ent => {
     const matchesCategory = ent.category === filter;
-    const matchesSearch = (ent.mobileNo || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = (ent.mobileNo || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (ent.name || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchesMonth = monthFilter === "" || ent.entryMonth === monthFilter;
     const matchesYear = yearFilter === "" || ent.entryYear === yearFilter;
-    return matchesCategory && matchesSearch && matchesMonth && matchesYear;
+    const matchesScope = scopeMode === "advisor" ? ent.advisorId === currentUser?.consultantId
+      : scopeMode === "subadvisor" ? ent.subAdvisorId === currentUser?.consultantId
+      : true;
+    return matchesCategory && matchesSearch && matchesMonth && matchesYear && matchesScope;
   });
 
   const handleDelete = async (id) => {
@@ -772,11 +779,11 @@ const UserRecord = ({ isMobile, currentUser }) => {
     }
   };
 
-  const motorHeaders = ["SL", "Month", "Vehicle No", "Policy No", "Make", "Model", "IMD Code", "Mobile No", "Name", "Company", "Vehicle Type", "Policy Type", "Tenure", "Risk start Date", "Risk End date", "OD", "TP", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Actions"];
-  const healthHeaders = ["SL", "Month", "Policy No", "Company", "Business Type", "Plan Name", "IMD Code", "Mobile No", "Name", "Sum Assured", "Family", "Bonus", "Tenure", "Risk start Date", "Risk End date", "Total prem", "Payout", "Co%", "Remarks", "Actions"];
-  const smeHeaders = ["SL", "Month", "Policy No", "Company", "Type", "IMD Code", "Mobile No", "Product", "Name", "Sum Assured", "Tenure", "Risk start Date", "Risk End date", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Actions"];
-  const lifeHeaders = ["SL", "Month", "Policy No", "Company", "Plan", "IMD Code", "Mobile No", "Name", "Sum Assured", "Payment Type", "Tenure", "Risk start Date", "Risk End date", "OD", "TP", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Actions"];
-  const mfHeaders = ["SL", "Month", "Folio No", "Company", "Fund Name", "IMD Code", "Mobile No", "Name", "Amount", "Payment Date", "Next Payment", "Tenure", "Risk start Date", "Risk End date", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Actions"];
+  const motorHeaders = ["SL", "Month", "Vehicle No", "Policy No", "Make", "Model", "IMD Code", "Mobile No", "Name", "Company", "Vehicle Type", "Policy Type", "Tenure", "Risk start Date", "Risk End date", "OD", "TP", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Created By", "Actions"];
+  const healthHeaders = ["SL", "Month", "Policy No", "Company", "Business Type", "Plan Name", "IMD Code", "Mobile No", "Name", "Sum Assured", "Family", "Bonus", "Tenure", "Risk start Date", "Risk End date", "Total prem", "Payout", "Co%", "Remarks", "Created By", "Actions"];
+  const smeHeaders = ["SL", "Month", "Policy No", "Company", "Type", "IMD Code", "Mobile No", "Product", "Name", "Sum Assured", "Tenure", "Risk start Date", "Risk End date", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Created By", "Actions"];
+  const lifeHeaders = ["SL", "Month", "Policy No", "Company", "Plan", "IMD Code", "Mobile No", "Name", "Sum Assured", "Payment Type", "Tenure", "Risk start Date", "Risk End date", "OD", "TP", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Created By", "Actions"];
+  const mfHeaders = ["SL", "Month", "Folio No", "Company", "Fund Name", "IMD Code", "Mobile No", "Name", "Amount", "Payment Date", "Next Payment", "Tenure", "Risk start Date", "Risk End date", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Created By", "Actions"];
 
   const getHeaders = () => {
     if (filter === "Motor") return motorHeaders;
@@ -799,7 +806,7 @@ const UserRecord = ({ isMobile, currentUser }) => {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, gap: 20, flexWrap: "wrap" }}>
-        <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800 }}>User Record View</h1>
+        <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800 }}>{title}</h1>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <select 
             value={monthFilter} 
@@ -879,6 +886,7 @@ const UserRecord = ({ isMobile, currentUser }) => {
                       {renderCell(ent.payout)}
                       {renderCell(ent.companyPercentage)}
                       {renderCell(ent.remarks)}
+                      {renderCell(ent.addedByName)}
                     </>
                   )}
                   {filter === "Health" && (
@@ -902,6 +910,7 @@ const UserRecord = ({ isMobile, currentUser }) => {
                       {renderCell(ent.payout)}
                       {renderCell(ent.companyPercentage)}
                       {renderCell(ent.remarks)}
+                      {renderCell(ent.addedByName)}
                     </>
                   )}
                   {filter === "SME" && (
@@ -924,6 +933,7 @@ const UserRecord = ({ isMobile, currentUser }) => {
                       {renderCell(ent.payout)}
                       {renderCell(ent.companyPercentage)}
                       {renderCell(ent.remarks)}
+                      {renderCell(ent.addedByName)}
                     </>
                   )}
                   {filter === "Life" && (
@@ -948,6 +958,7 @@ const UserRecord = ({ isMobile, currentUser }) => {
                       {renderCell(ent.payout)}
                       {renderCell(ent.companyPercentage)}
                       {renderCell(ent.remarks)}
+                      {renderCell(ent.addedByName)}
                     </>
                   )}
                   {filter === "MutualFund" && (
@@ -971,6 +982,7 @@ const UserRecord = ({ isMobile, currentUser }) => {
                       {renderCell(ent.payout)}
                       {renderCell(ent.companyPercentage)}
                       {renderCell(ent.remarks)}
+                      {renderCell(ent.addedByName)}
                     </>
                   )}
                   <td style={{ padding: "12px 15px", borderBottom: "1px solid #e2e8f0" }}>
@@ -1058,10 +1070,23 @@ const UserRecord = ({ isMobile, currentUser }) => {
 };
 
 const CreateUser = ({ isMobile }) => {
-  const initialFormState = { name: "", email: "", phone: "", password: "", isAdmin: false, permissions: ["records"] };
+  const initialFormState = { name: "", email: "", phone: "", password: "", userRole: "User", consultantId: "", permissions: ["records"] };
   const [form, setForm] = useState(initialFormState);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [advisorOptions, setAdvisorOptions] = useState([]);
+
+  useEffect(() => {
+    if (form.userRole !== "Advisor") return;
+    const q = query(collection(db, "consultants"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const topLevel = snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(c => !c.parentAdvisorId);
+      setAdvisorOptions(topLevel);
+    });
+    return () => unsubscribe();
+  }, [form.userRole]);
 
   const togglePermission = (permKey, checked) => {
     setForm(prev => ({
@@ -1073,13 +1098,18 @@ const CreateUser = ({ isMobile }) => {
   };
 
   const handleSubmit = async () => {
+    if (form.userRole === "Advisor" && !form.consultantId) {
+      toast.error("Please select which advisor profile this login belongs to.");
+      return;
+    }
     setLoading(true);
     try {
-      const { isAdmin, permissions, ...rest } = form;
+      const { userRole, permissions, consultantId, ...rest } = form;
+      const docData = userRole === "Advisor"
+        ? { ...rest, role: "Advisor", consultantId, parentAdvisorId: "", permissions: [] }
+        : { ...rest, role: userRole, permissions };
       await addDoc(collection(db, "users"), {
-        ...rest,
-        role: isAdmin ? "Admin" : "User",
-        permissions,
+        ...docData,
         createdAt: serverTimestamp()
       });
       setForm(initialFormState);
@@ -1110,16 +1140,26 @@ const CreateUser = ({ isMobile }) => {
        </div>
 
        <div style={{ marginTop: 24, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 16 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, color: "#1e293b", cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={form.isAdmin}
-              onChange={e => setForm({ ...form, isAdmin: e.target.checked })}
-            />
-            Admin (Full Access)
-          </label>
+          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8, fontWeight: 700 }}>Account Type</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: form.userRole === "User" ? 14 : 0 }}>
+            {[
+              { key: "Admin", label: "Admin (Full Access)" },
+              { key: "User", label: "Staff User" },
+              { key: "Advisor", label: "Advisor (Portal Login)" },
+            ].map(opt => (
+              <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: opt.key === "Admin" ? 700 : 400, color: "#1e293b", cursor: "pointer" }}>
+                <input
+                  type="radio"
+                  name="userRole"
+                  checked={form.userRole === opt.key}
+                  onChange={() => setForm({ ...form, userRole: opt.key })}
+                />
+                {opt.label}
+              </label>
+            ))}
+          </div>
 
-          {!form.isAdmin && (
+          {form.userRole === "User" && (
             <div style={{ marginTop: 14 }}>
               <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>Grant access to (select any number):</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
@@ -1134,6 +1174,25 @@ const CreateUser = ({ isMobile }) => {
                   </label>
                 ))}
               </div>
+            </div>
+          )}
+
+          {form.userRole === "Advisor" && (
+            <div style={{ marginTop: 14 }}>
+              <label style={{ fontSize: 12, color: "#64748b", marginBottom: 8, display: "block" }}>Link to Advisor Profile</label>
+              <select
+                value={form.consultantId}
+                onChange={e => setForm({ ...form, consultantId: e.target.value })}
+                style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, color: "#1e293b", width: "100%" }}
+              >
+                <option value="">Select Advisor Profile</option>
+                {advisorOptions.map(a => (
+                  <option key={a.id} value={a.id}>{a.name} {a.advisorId ? `(${a.advisorId})` : ""}</option>
+                ))}
+              </select>
+              {advisorOptions.length === 0 && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>No unlinked advisor profiles found. Create one first under "Advisor Data".</div>
+              )}
             </div>
           )}
        </div>
@@ -1346,11 +1405,11 @@ const uploadPersonFile = async (file, path) => {
   return await getDownloadURL(storageRef);
 };
 
-const PersonForm = ({ isMobile, type }) => {
+const PersonForm = ({ isMobile, type, parentAdvisorId, requireLogin }) => {
   const collectionName = type === "Employee" ? "employees" : "consultants";
   const displayType = type === "Employee" ? "Employee" : "Advisor";
   const idFieldKey = type === "Employee" ? "employeeId" : "advisorId";
-  const initialFormState = { name: "", number: "", email: "", qualification: "", customQualification: "", idNumber: "" };
+  const initialFormState = { name: "", number: "", email: "", qualification: "", customQualification: "", idNumber: "", loginEmail: "", loginPassword: "" };
   const [form, setForm] = useState(initialFormState);
   const [images, setImages] = useState([]);
   const [pdfs, setPdfs] = useState([]);
@@ -1382,6 +1441,10 @@ const PersonForm = ({ isMobile, type }) => {
       toast.error("Name and Number are required.");
       return;
     }
+    if (requireLogin && (!form.loginEmail || !form.loginPassword)) {
+      toast.error("Login Email and Password are required.");
+      return;
+    }
     setLoading(true);
     try {
       const timestamp = Date.now();
@@ -1397,7 +1460,7 @@ const PersonForm = ({ isMobile, type }) => {
 
       const finalQualification = form.qualification === "Other" ? form.customQualification : form.qualification;
 
-      await addDoc(collection(db, collectionName), {
+      const profileDocRef = await addDoc(collection(db, collectionName), {
         name: form.name,
         number: form.number,
         email: form.email,
@@ -1406,8 +1469,23 @@ const PersonForm = ({ isMobile, type }) => {
         photoUrl,
         imageUrls,
         pdfUrls,
+        ...(parentAdvisorId ? { parentAdvisorId } : {}),
         createdAt: serverTimestamp()
       });
+
+      if (requireLogin) {
+        await addDoc(collection(db, "users"), {
+          name: form.name,
+          email: form.loginEmail,
+          phone: form.number,
+          password: form.loginPassword,
+          role: "SubAdvisor",
+          consultantId: profileDocRef.id,
+          parentAdvisorId,
+          permissions: [],
+          createdAt: serverTimestamp()
+        });
+      }
 
       toast.success(`${displayType} saved successfully!`);
       setForm(initialFormState);
@@ -1503,6 +1581,19 @@ const PersonForm = ({ isMobile, type }) => {
             )}
           </div>
 
+          {requireLogin && (
+            <>
+              <div>
+                <label style={labelStyle}>Login Email</label>
+                <input type="email" value={form.loginEmail} onChange={e => setForm({ ...form, loginEmail: e.target.value })} style={inputStyle} placeholder="Email used to log in" />
+              </div>
+              <div>
+                <label style={labelStyle}>Login Password</label>
+                <input type="text" value={form.loginPassword} onChange={e => setForm({ ...form, loginPassword: e.target.value })} style={inputStyle} placeholder="Password used to log in" />
+              </div>
+            </>
+          )}
+
           {renderSinglePhoto(`${displayType} Photo`, photoFile, handlePhotoChange, () => setPhotoFile(null))}
           {renderFileList("Upload Image", images, handleAddImages, (idx) => setImages(prev => prev.filter((_, i) => i !== idx)), "image/*")}
           {renderFileList("Upload PDF", pdfs, handleAddPdfs, (idx) => setPdfs(prev => prev.filter((_, i) => i !== idx)), "application/pdf")}
@@ -1516,7 +1607,7 @@ const PersonForm = ({ isMobile, type }) => {
   );
 };
 
-const PersonList = ({ isMobile, type }) => {
+const PersonList = ({ isMobile, type, parentAdvisorId }) => {
   const collectionName = type === "Employee" ? "employees" : "consultants";
   const displayType = type === "Employee" ? "Employee" : "Advisor";
   const idFieldKey = type === "Employee" ? "employeeId" : "advisorId";
@@ -1525,12 +1616,14 @@ const PersonList = ({ isMobile, type }) => {
   const [viewingDocs, setViewingDocs] = useState(null);
 
   useEffect(() => {
-    const q = query(collection(db, collectionName), orderBy("createdAt", "desc"));
+    const q = parentAdvisorId
+      ? query(collection(db, collectionName), where("parentAdvisorId", "==", parentAdvisorId), orderBy("createdAt", "desc"))
+      : query(collection(db, collectionName), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsubscribe();
-  }, [collectionName]);
+  }, [collectionName, parentAdvisorId]);
 
   const handleDelete = async (id) => {
     if (window.confirm(`Are you sure you want to delete this ${displayType.toLowerCase()}?`)) {
@@ -1674,6 +1767,21 @@ const AllConsultants = ({ isMobile }) => (
   </div>
 );
 
+const CreateSubAdvisor = ({ isMobile, currentUser }) => (
+  <div>
+    <div style={{ marginBottom: 28 }}>
+      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>Create Sub Advisor</h1>
+      <p style={{ color: "#64748b", fontSize: 13 }}>Add a sub advisor under you, with their own login</p>
+    </div>
+    <PersonForm isMobile={isMobile} type="Consultant" parentAdvisorId={currentUser?.consultantId} requireLogin />
+
+    <div style={{ marginTop: 32 }}>
+      <h2 style={{ color: "#1e293b", fontSize: isMobile ? 18 : 20, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 16 }}>Your Sub Advisors</h2>
+      <PersonList isMobile={isMobile} type="Consultant" parentAdvisorId={currentUser?.consultantId} />
+    </div>
+  </div>
+);
+
 export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState(JSON.parse(localStorage.getItem("adminUser")));
   const [active, setActive] = useState("records");
@@ -1683,6 +1791,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!currentUser || currentUser.role === "Admin") return;
+    if (currentUser.role === "Advisor" || currentUser.role === "SubAdvisor") {
+      setActive("recordclient");
+      return;
+    }
     const perms = getUserPermissions(currentUser);
     if (perms.includes("records")) setActive("records");
     else if (perms.includes("employees")) setActive("employees");
@@ -1737,13 +1849,18 @@ export default function Dashboard() {
     { key: "consultants", label: "Advisor Data", icon: "🧑‍🏫", permission: "consultants" },
     { key: "allEmployees", label: "All Employees", icon: "🧑‍🤝‍🧑", adminOnly: true },
     { key: "allConsultants", label: "All Advisor", icon: "👥", adminOnly: true },
+    { key: "createSubAdvisor", label: "Create Sub Advisor", icon: "➕", roles: ["Advisor"] },
+    { key: "recordclient", label: "Record Client", icon: "📊", roles: ["Advisor", "SubAdvisor"] },
+    { key: "findclient", label: "Find Client", icon: "🗂️", roles: ["Advisor", "SubAdvisor"] },
     { key: "sync", label: "Sync Settings", icon: "⚙️", adminOnly: true },
   ];
 
   const isAdmin = currentUser.role === "Admin";
   const userPermissions = getUserPermissions(currentUser);
   const filteredNavItems = navItems.filter(item =>
-    isAdmin || (!item.adminOnly && userPermissions.includes(item.permission))
+    isAdmin
+    || (item.roles || []).includes(currentUser.role)
+    || (!item.adminOnly && !item.roles && userPermissions.includes(item.permission))
   );
 
   return (
@@ -1794,7 +1911,10 @@ export default function Dashboard() {
            <div style={{ textAlign: "right", minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{currentUser.name}</div>
                 <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  {isAdmin ? "Admin" : (PERMISSION_OPTIONS.filter(p => userPermissions.includes(p.key)).map(p => p.label).join(" + ") || "No Access")}
+                  {isAdmin ? "Admin"
+                    : currentUser.role === "Advisor" ? "Advisor"
+                    : currentUser.role === "SubAdvisor" ? "Sub Advisor"
+                    : (PERMISSION_OPTIONS.filter(p => userPermissions.includes(p.key)).map(p => p.label).join(" + ") || "No Access")}
                 </div>
            </div>
         </header>
@@ -1802,11 +1922,21 @@ export default function Dashboard() {
           {active === "users" && <AllUsers isMobile={isMobile} users={users} currentUser={currentUser} />}
           {active === "records" && <DataRecord isMobile={isMobile} currentUser={currentUser} />}
           {active === "create" && <CreateUser isMobile={isMobile} />}
-          {active === "userrecord" && <UserRecord isMobile={isMobile} currentUser={currentUser} />}
+          {active === "userrecord" && <UserRecord isMobile={isMobile} currentUser={currentUser} title="Find Data" scopeMode="admin" />}
           {active === "employees" && <EmployeeData isMobile={isMobile} />}
           {active === "consultants" && <ConsultantData isMobile={isMobile} />}
           {active === "allEmployees" && <AllEmployees isMobile={isMobile} />}
           {active === "allConsultants" && <AllConsultants isMobile={isMobile} />}
+          {active === "createSubAdvisor" && <CreateSubAdvisor isMobile={isMobile} currentUser={currentUser} />}
+          {active === "recordclient" && <DataRecord isMobile={isMobile} currentUser={currentUser} />}
+          {active === "findclient" && (
+            <UserRecord
+              isMobile={isMobile}
+              currentUser={currentUser}
+              title="Find Client"
+              scopeMode={currentUser.role === "Advisor" ? "advisor" : "subadvisor"}
+            />
+          )}
           {active === "sync" && <SyncSettings isMobile={isMobile} />}
         </main>
       </div>
