@@ -1643,14 +1643,15 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {["Photo", `${displayType} ID`, "Name", "Number", "Email", "Qualification", "Docs", "Actions"].map(h => (
+                {["SL", "Photo", `${displayType} ID`, "Name", "Number", "Email", "Qualification", "Docs", "Actions"].map(h => (
                   <th key={h} style={{ padding: "12px 20px", color: "#64748b", fontSize: 11, fontWeight: 700, textAlign: "left", letterSpacing: "1px", textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {items.map(item => (
+              {items.map((item, idx) => (
                 <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                  <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{items.length - idx}</td>
                   <td style={{ padding: "12px 20px" }}>
                     {item.photoUrl ? (
                       <img src={item.photoUrl} alt={item.name} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
