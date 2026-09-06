@@ -1651,7 +1651,7 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
             <tbody>
               {items.map((item, idx) => (
                 <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                  <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{items.length - idx}</td>
+                  <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{idx + 1}</td>
                   <td style={{ padding: "12px 20px" }}>
                     {item.photoUrl ? (
                       <img src={item.photoUrl} alt={item.name} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
