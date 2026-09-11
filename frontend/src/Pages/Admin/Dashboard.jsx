@@ -1614,6 +1614,9 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
   const label = type === "Employee" ? "Employees" : "Advisors";
   const [items, setItems] = useState([]);
   const [viewingDocs, setViewingDocs] = useState(null);
+  const [editingItem, setEditingItem] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
 
   useEffect(() => {
     const q = parentAdvisorId
@@ -1634,6 +1637,48 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
         toast.error("Error deleting record: " + e.message);
       }
     }
+  };
+
+  const openEdit = (item) => {
+    const isKnownQualification = QUALIFICATIONS.includes(item.qualification);
+    setEditingItem(item);
+    setEditForm({
+      name: item.name || "",
+      number: item.number || "",
+      email: item.email || "",
+      qualification: item.qualification ? (isKnownQualification ? item.qualification : "Other") : "",
+      customQualification: item.qualification && !isKnownQualification ? item.qualification : "",
+      idNumber: item[idFieldKey] || "",
+    });
+  };
+
+  const closeEdit = () => {
+    setEditingItem(null);
+    setEditForm(null);
+  };
+
+  const handleEditSave = async (e) => {
+    e.preventDefault();
+    if (!editForm.name || !editForm.number) {
+      toast.error("Name and Number are required.");
+      return;
+    }
+    setEditLoading(true);
+    try {
+      const finalQualification = editForm.qualification === "Other" ? editForm.customQualification : editForm.qualification;
+      await updateDoc(doc(db, collectionName, editingItem.id), {
+        name: editForm.name,
+        number: editForm.number,
+        email: editForm.email,
+        qualification: finalQualification,
+        [idFieldKey]: editForm.idNumber,
+      });
+      toast.success(`${displayType} updated successfully!`);
+      closeEdit();
+    } catch (err) {
+      toast.error(`Error updating ${displayType.toLowerCase()}: ` + err.message);
+    }
+    setEditLoading(false);
   };
 
   return (
@@ -1674,7 +1719,13 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
                       VIEW DOCS
                     </button>
                   </td>
-                  <td style={{ padding: "12px 20px" }}>
+                  <td style={{ padding: "12px 20px", display: "flex", gap: 6 }}>
+                    <button
+                      onClick={() => openEdit(item)}
+                      style={{ background: "#f8fafc", color: "#16a34a", border: "1px solid #16a34a", borderRadius: 4, padding: "4px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+                    >
+                      EDIT
+                    </button>
                     <button
                       onClick={() => handleDelete(item.id)}
                       style={{ background: "#ef4444", color: "#fff", border: "none", borderRadius: 4, padding: "4px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
@@ -1720,6 +1771,50 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
                   <p style={{ textAlign: "center", color: "#64748b", fontSize: 14 }}>No documents uploaded for this record.</p>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingItem && editForm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, backdropFilter: "blur(4px)" }}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto", position: "relative", border: "1px solid #e2e8f0", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+            <div style={{ padding: 24 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <h3 style={{ margin: 0, color: "#1e293b", fontSize: 18, fontWeight: 800 }}>Edit {displayType}</h3>
+                <button onClick={closeEdit} style={{ background: "transparent", border: "none", color: "#64748b", fontSize: 24, cursor: "pointer" }}>&times;</button>
+              </div>
+              <form onSubmit={handleEditSave} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div>
+                  <label style={{ fontSize: 12, color: "#475569", marginBottom: 5, display: "block" }}>Name</label>
+                  <input type="text" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: 10, color: "#1e293b", outline: "none", width: "100%" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: "#475569", marginBottom: 5, display: "block" }}>Number</label>
+                  <input type="tel" value={editForm.number} onChange={e => setEditForm({ ...editForm, number: e.target.value })} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: 10, color: "#1e293b", outline: "none", width: "100%" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: "#475569", marginBottom: 5, display: "block" }}>Email</label>
+                  <input type="email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: 10, color: "#1e293b", outline: "none", width: "100%" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: "#475569", marginBottom: 5, display: "block" }}>{displayType} ID</label>
+                  <input type="text" value={editForm.idNumber} onChange={e => setEditForm({ ...editForm, idNumber: e.target.value })} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: 10, color: "#1e293b", outline: "none", width: "100%" }} />
+                </div>
+                <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: editForm.qualification === "Other" ? 10 : 0 }}>
+                  <label style={{ fontSize: 12, color: "#475569", marginBottom: 5, display: "block" }}>Qualification</label>
+                  <select value={editForm.qualification} onChange={e => setEditForm({ ...editForm, qualification: e.target.value })} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: 10, color: "#1e293b", outline: "none", width: "100%" }}>
+                    <option value="">Select Qualification</option>
+                    {QUALIFICATIONS.map(q => <option key={q} value={q}>{q}</option>)}
+                  </select>
+                  {editForm.qualification === "Other" && (
+                    <input type="text" value={editForm.customQualification} onChange={e => setEditForm({ ...editForm, customQualification: e.target.value })} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: 10, color: "#1e293b", outline: "none", width: "100%" }} placeholder="Enter Qualification" />
+                  )}
+                </div>
+                <button type="submit" disabled={editLoading} style={{ gridColumn: "1 / -1", background: "#1e90ff", color: "#fff", border: "none", borderRadius: 8, padding: 14, fontWeight: 700, fontSize: 14, cursor: editLoading ? "not-allowed" : "pointer", marginTop: 4 }}>
+                  {editLoading ? "Saving..." : "Save Changes"}
+                </button>
+              </form>
             </div>
           </div>
         </div>
