@@ -1617,6 +1617,12 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
   const [editingItem, setEditingItem] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [editLoading, setEditLoading] = useState(false);
+  const [editPhotoFile, setEditPhotoFile] = useState(null);
+  const [editRemovePhoto, setEditRemovePhoto] = useState(false);
+  const [editExistingImages, setEditExistingImages] = useState([]);
+  const [editNewImages, setEditNewImages] = useState([]);
+  const [editExistingPdfs, setEditExistingPdfs] = useState([]);
+  const [editNewPdfs, setEditNewPdfs] = useState([]);
 
   useEffect(() => {
     const q = parentAdvisorId
@@ -1650,11 +1656,42 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
       customQualification: item.qualification && !isKnownQualification ? item.qualification : "",
       idNumber: item[idFieldKey] || "",
     });
+    setEditPhotoFile(null);
+    setEditRemovePhoto(false);
+    setEditExistingImages(item.imageUrls || []);
+    setEditNewImages([]);
+    setEditExistingPdfs(item.pdfUrls || []);
+    setEditNewPdfs([]);
   };
 
   const closeEdit = () => {
     setEditingItem(null);
     setEditForm(null);
+    setEditPhotoFile(null);
+    setEditRemovePhoto(false);
+    setEditExistingImages([]);
+    setEditNewImages([]);
+    setEditExistingPdfs([]);
+    setEditNewPdfs([]);
+  };
+
+  const handleEditAddImages = (e) => {
+    const files = Array.from(e.target.files || []);
+    setEditNewImages(prev => [...prev, ...files]);
+    e.target.value = "";
+  };
+  const handleEditAddPdfs = (e) => {
+    const files = Array.from(e.target.files || []);
+    setEditNewPdfs(prev => [...prev, ...files]);
+    e.target.value = "";
+  };
+  const handleEditPhotoChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      setEditPhotoFile(file);
+      setEditRemovePhoto(false);
+    }
+    e.target.value = "";
   };
 
   const handleEditSave = async (e) => {
@@ -1665,13 +1702,28 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
     }
     setEditLoading(true);
     try {
+      const timestamp = Date.now();
       const finalQualification = editForm.qualification === "Other" ? editForm.customQualification : editForm.qualification;
+
+      const uploadedImageUrls = await Promise.all(
+        editNewImages.map((file, i) => uploadPersonFile(file, `dataRecords/${collectionName}/${timestamp}_image_${i}_${file.name}`))
+      );
+      const uploadedPdfUrls = await Promise.all(
+        editNewPdfs.map((file, i) => uploadPersonFile(file, `dataRecords/${collectionName}/${timestamp}_pdf_${i}_${file.name}`))
+      );
+      const photoUrl = editPhotoFile
+        ? await uploadPersonFile(editPhotoFile, `dataRecords/${collectionName}/${timestamp}_photo_${editPhotoFile.name}`)
+        : editRemovePhoto ? "" : (editingItem.photoUrl || "");
+
       await updateDoc(doc(db, collectionName, editingItem.id), {
         name: editForm.name,
         number: editForm.number,
         email: editForm.email,
         qualification: finalQualification,
         [idFieldKey]: editForm.idNumber,
+        photoUrl,
+        imageUrls: [...editExistingImages, ...uploadedImageUrls],
+        pdfUrls: [...editExistingPdfs, ...uploadedPdfUrls],
       });
       toast.success(`${displayType} updated successfully!`);
       closeEdit();
@@ -1811,6 +1863,85 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
                     <input type="text" value={editForm.customQualification} onChange={e => setEditForm({ ...editForm, customQualification: e.target.value })} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: 10, color: "#1e293b", outline: "none", width: "100%" }} placeholder="Enter Qualification" />
                   )}
                 </div>
+
+                <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <label style={{ fontSize: 12, color: "#475569", marginBottom: 5, display: "block" }}>{displayType} Photo</label>
+                  {editPhotoFile ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <img src={URL.createObjectURL(editPhotoFile)} alt="preview" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{editPhotoFile.name}</div>
+                      </div>
+                      <button type="button" onClick={() => setEditPhotoFile(null)} style={{ background: "#fee2e2", border: "none", color: "#ef4444", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 14, fontWeight: "bold", flexShrink: 0 }}>&times;</button>
+                    </div>
+                  ) : (!editRemovePhoto && editingItem.photoUrl) ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <img src={editingItem.photoUrl} alt="current" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
+                        <div style={{ fontSize: 12, color: "#64748b" }}>Current photo</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <label style={{ color: "#1e90ff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                          CHANGE
+                          <input type="file" accept="image/*" onChange={handleEditPhotoChange} style={{ display: "none" }} />
+                        </label>
+                        <button type="button" onClick={() => setEditRemovePhoto(true)} style={{ background: "transparent", border: "none", color: "#ef4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>REMOVE</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 12px", border: "1px dashed #1e90ff", borderRadius: 8, cursor: "pointer", color: "#1e90ff", fontSize: 13, fontWeight: 700, background: "#f0f9ff" }}>
+                      <span>+</span> {displayType} Photo
+                      <input type="file" accept="image/*" onChange={handleEditPhotoChange} style={{ display: "none" }} />
+                    </label>
+                  )}
+                </div>
+
+                <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <label style={{ fontSize: 12, color: "#475569", marginBottom: 5, display: "block" }}>Images</label>
+                  {editExistingImages.map((url, idx) => (
+                    <div key={`existing-img-${idx}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, gap: 10 }}>
+                      <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e90ff", fontWeight: 600, textDecoration: "none" }}>IMAGE {idx + 1}</a>
+                      <button type="button" onClick={() => setEditExistingImages(prev => prev.filter((_, i) => i !== idx))} style={{ background: "#fee2e2", border: "none", color: "#ef4444", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 14, fontWeight: "bold", flexShrink: 0 }}>&times;</button>
+                    </div>
+                  ))}
+                  {editNewImages.map((file, idx) => (
+                    <div key={`new-img-${idx}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <img src={URL.createObjectURL(file)} alt="preview" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} />
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{file.name}</div>
+                      </div>
+                      <button type="button" onClick={() => setEditNewImages(prev => prev.filter((_, i) => i !== idx))} style={{ background: "#fee2e2", border: "none", color: "#ef4444", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 14, fontWeight: "bold", flexShrink: 0 }}>&times;</button>
+                    </div>
+                  ))}
+                  <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 12px", border: "1px dashed #1e90ff", borderRadius: 8, cursor: "pointer", color: "#1e90ff", fontSize: 13, fontWeight: 700, background: "#f0f9ff" }}>
+                    <span>+</span> Upload Image
+                    <input type="file" accept="image/*" multiple onChange={handleEditAddImages} style={{ display: "none" }} />
+                  </label>
+                </div>
+
+                <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <label style={{ fontSize: 12, color: "#475569", marginBottom: 5, display: "block" }}>PDFs</label>
+                  {editExistingPdfs.map((url, idx) => (
+                    <div key={`existing-pdf-${idx}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, gap: 10 }}>
+                      <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e90ff", fontWeight: 600, textDecoration: "none" }}>PDF {idx + 1}</a>
+                      <button type="button" onClick={() => setEditExistingPdfs(prev => prev.filter((_, i) => i !== idx))} style={{ background: "#fee2e2", border: "none", color: "#ef4444", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 14, fontWeight: "bold", flexShrink: 0 }}>&times;</button>
+                    </div>
+                  ))}
+                  {editNewPdfs.map((file, idx) => (
+                    <div key={`new-pdf-${idx}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <span style={{ fontSize: 24 }}>📄</span>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{file.name}</div>
+                      </div>
+                      <button type="button" onClick={() => setEditNewPdfs(prev => prev.filter((_, i) => i !== idx))} style={{ background: "#fee2e2", border: "none", color: "#ef4444", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 14, fontWeight: "bold", flexShrink: 0 }}>&times;</button>
+                    </div>
+                  ))}
+                  <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 12px", border: "1px dashed #1e90ff", borderRadius: 8, cursor: "pointer", color: "#1e90ff", fontSize: 13, fontWeight: 700, background: "#f0f9ff" }}>
+                    <span>+</span> Upload PDF
+                    <input type="file" accept="application/pdf" multiple onChange={handleEditAddPdfs} style={{ display: "none" }} />
+                  </label>
+                </div>
+
                 <button type="submit" disabled={editLoading} style={{ gridColumn: "1 / -1", background: "#1e90ff", color: "#fff", border: "none", borderRadius: 8, padding: 14, fontWeight: 700, fontSize: 14, cursor: editLoading ? "not-allowed" : "pointer", marginTop: 4 }}>
                   {editLoading ? "Saving..." : "Save Changes"}
                 </button>
