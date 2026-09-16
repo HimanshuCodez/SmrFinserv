@@ -2102,21 +2102,23 @@ export default function Dashboard() {
       )}
 
       {/* Sidebar */}
-      <div style={{ 
-        width: isMobile ? 260 : (collapsed ? 80 : 260), 
-        background: "#fff", 
-        borderRight: "1px solid #e2e8f0", 
+      <div style={{
+        width: isMobile ? 260 : (collapsed ? 80 : 260),
+        background: "#fff",
+        borderRight: "1px solid #e2e8f0",
         transition: "0.3s ease-in-out",
         position: isMobile ? "fixed" : "relative",
         left: isMobile && collapsed ? -260 : 0,
         height: "100vh",
         zIndex: 1000,
+        display: "flex",
+        flexDirection: "column",
       }}>
-        <div style={{ padding: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ padding: 20, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           {(!collapsed || isMobile) ? <Logo /> : <span style={{ fontSize: 24, fontWeight: 900, color: "#1e90ff" }}>S</span>}
           {isMobile && <button onClick={() => setCollapsed(true)} style={{ background: "transparent", border: "none", color: "#64748b", fontSize: 24, cursor: "pointer" }}>&times;</button>}
         </div>
-        <nav style={{ padding: 10 }}>
+        <nav style={{ padding: 10, flex: 1, minHeight: 0, overflowY: "auto" }}>
           {filteredNavItems.map(item => (
             <button key={item.key} onClick={() => { setActive(item.key); if (isMobile) setCollapsed(true); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 15px", marginBottom: 5, background: active === item.key ? "#1e90ff11" : "transparent", border: "none", color: active === item.key ? "#1e90ff" : "#64748b", cursor: "pointer", borderRadius: 8, transition: "0.2s" }}>
               <span style={{ fontSize: 20 }}>{item.icon}</span> {(!collapsed || isMobile) && <span style={{ fontWeight: active === item.key ? 700 : 500 }}>{item.label}</span>}
