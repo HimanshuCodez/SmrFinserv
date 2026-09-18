@@ -183,7 +183,7 @@ const MOTOR_VEHICLE_TYPES = [
 
 const HEALTH_FAMILY_MEMBERS = [
   "1 Adult", "2 Adult", "2 Adult 1 child", "2 Adult 2 Child",
-  "2 Adult 3 child", "1 Adult 1 Child", "1 Adult 2 child"
+  "2 Adult 3 child", "1 Adult 1 Child", "1 Adult 2 child", "Others"
 ];
 
 const COMPANIES_BY_CATEGORY = {
@@ -218,6 +218,7 @@ const stripSheetOnlyFields = (record) => {
   delete cleaned.updatedAt;
   delete cleaned.customCompany;
   delete cleaned.customVehicleType;
+  delete cleaned.customFamilyMembers;
 
   Object.keys(cleaned).forEach((key) => {
     const lower = key.toLowerCase();
@@ -304,6 +305,7 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
     subType: "", // Business Type / Insurance Type
     sumAssured: "",
     familyMembers: "",
+    customFamilyMembers: "",
     bonus: "",
     tenure: "",
     productName: "",
@@ -333,12 +335,16 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
       
       const isOtherVehicle = recordToEdit.vehicleType && !MOTOR_VEHICLE_TYPES.includes(recordToEdit.vehicleType);
 
+      const isOtherFamilyMembers = recordToEdit.familyMembers && !HEALTH_FAMILY_MEMBERS.includes(recordToEdit.familyMembers);
+
       setForm({
         ...recordToEdit,
         company: isOtherCompany ? "OTHERS" : recordToEdit.company,
         customCompany: isOtherCompany ? recordToEdit.company : "",
         vehicleType: isOtherVehicle ? "MISC D: OTHER" : recordToEdit.vehicleType,
-        customVehicleType: isOtherVehicle ? recordToEdit.vehicleType : ""
+        customVehicleType: isOtherVehicle ? recordToEdit.vehicleType : "",
+        familyMembers: isOtherFamilyMembers ? "Others" : recordToEdit.familyMembers,
+        customFamilyMembers: isOtherFamilyMembers ? recordToEdit.familyMembers : ""
       });
     } else {
       setForm(initialFormState);
@@ -381,11 +387,13 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
 
       const finalCompany = form.company === "OTHERS" ? form.customCompany : form.company;
       const finalVehicleType = form.vehicleType === "MISC D: OTHER" ? form.customVehicleType : form.vehicleType;
+      const finalFamilyMembers = form.familyMembers === "Others" ? form.customFamilyMembers : form.familyMembers;
 
       const dataToSave = {
         ...form,
         company: finalCompany,
         vehicleType: finalVehicleType,
+        familyMembers: finalFamilyMembers,
         addedBy: currentUser?.id || "admin",
         addedByName: currentUser?.name || "Super Admin",
         advisorId: currentUser?.role === "Advisor" ? currentUser.consultantId
@@ -397,6 +405,7 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
       // Remove custom fields from firestore data
       delete dataToSave.customCompany;
       delete dataToSave.customVehicleType;
+      delete dataToSave.customFamilyMembers;
 
       if (aadhaarFrontUrl) dataToSave.aadhaarFrontPhoto = aadhaarFrontUrl;
       if (aadhaarBackUrl) dataToSave.aadhaarBackPhoto = aadhaarBackUrl;
@@ -663,7 +672,18 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
               {renderField("Business Type", "subType", "select", ["New", "Renewal", "Port"])}
               {renderField("Plan Name", "plan")}
               {renderField("Sum Assured", "sumAssured")}
-              {renderField("Family Members", "familyMembers", "select", HEALTH_FAMILY_MEMBERS)}
+              <div style={{ display: "flex", flexDirection: "column", gap: form.familyMembers === "Others" ? 10 : 0 }}>
+                {renderField("Family Members", "familyMembers", "select", HEALTH_FAMILY_MEMBERS)}
+                {form.familyMembers === "Others" && (
+                  <input
+                    type="text"
+                    value={form.customFamilyMembers}
+                    onChange={e => setForm({ ...form, customFamilyMembers: e.target.value })}
+                    style={inputStyle}
+                    placeholder="Enter Family Members"
+                  />
+                )}
+              </div>
               {renderField("Bonus", "bonus")}
             </>
           )}
