@@ -752,7 +752,8 @@ const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "a
     const matchesMonth = monthFilter === "" || ent.entryMonth === monthFilter;
     const matchesYear = yearFilter === "" || ent.entryYear === yearFilter;
     const targetId = scopeId || currentUser?.consultantId;
-    const matchesScope = scopeMode === "advisor" ? !!targetId && ent.advisorId === targetId && !ent.subAdvisorId
+    const matchesScope = scopeMode === "advisor" ? !!targetId && ent.advisorId === targetId
+      : scopeMode === "advisorOwn" ? !!targetId && ent.advisorId === targetId && !ent.subAdvisorId
       : scopeMode === "subadvisor" ? !!targetId && ent.subAdvisorId === targetId
       : true;
     return matchesCategory && matchesSearch && matchesMonth && matchesYear && matchesScope;
@@ -1068,14 +1069,20 @@ const CreateUser = ({ isMobile }) => {
 
   useEffect(() => {
     if (form.userRole !== "Advisor") return;
-    const q = query(collection(db, "consultants"), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const topLevel = snapshot.docs
+    let profiles = [];
+    let linkedIds = new Set();
+    const publish = () => setAdvisorOptions(profiles.filter(c => !linkedIds.has(c.id)));
+    const unsubProfiles = onSnapshot(query(collection(db, "consultants"), orderBy("createdAt", "desc")), (snapshot) => {
+      profiles = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .filter(c => !c.parentAdvisorId);
-      setAdvisorOptions(topLevel);
+      publish();
     });
-    return () => unsubscribe();
+    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      linkedIds = new Set(snapshot.docs.map(d => d.data().consultantId).filter(Boolean));
+      publish();
+    });
+    return () => { unsubProfiles(); unsubUsers(); };
   }, [form.userRole]);
 
   const handleSubmit = async () => {
@@ -1368,7 +1375,7 @@ const uploadPersonFile = async (file, path) => {
   return await getDownloadURL(storageRef);
 };
 
-const PersonForm = ({ isMobile, type, parentAdvisorId, requireLogin }) => {
+const PersonForm = ({ isMobile, type, parentAdvisorId, requireLogin, loginRole = "SubAdvisor" }) => {
   const collectionName = type === "Employee" ? "employees" : "consultants";
   const displayType = type === "Employee" ? "Employee" : "Advisor";
   const idFieldKey = type === "Employee" ? "employeeId" : "advisorId";
@@ -1442,10 +1449,9 @@ const PersonForm = ({ isMobile, type, parentAdvisorId, requireLogin }) => {
           email: form.loginEmail,
           phone: form.number,
           password: form.loginPassword,
-          role: "SubAdvisor",
+          role: loginRole,
           consultantId: profileDocRef.id,
-          parentAdvisorId,
-          permissions: [],
+          parentAdvisorId: parentAdvisorId || "",
           createdAt: serverTimestamp()
         });
       }
@@ -1949,8 +1955,8 @@ const EmployeesList = ({ isMobile, title }) => (
 
 const CreateAdvisor = ({ isMobile }) => (
   <div>
-    <PageHeader isMobile={isMobile} title="Create Advisor" subtitle="Add a new advisor record. Give them a login from Create User." />
-    <PersonForm isMobile={isMobile} type="Consultant" />
+    <PageHeader isMobile={isMobile} title="Create Advisor" subtitle="Add a new advisor, with their own login" />
+    <PersonForm isMobile={isMobile} type="Consultant" requireLogin loginRole="Advisor" />
   </div>
 );
 
@@ -2103,7 +2109,7 @@ const AdvisorDetail = ({ isMobile, currentUser, advisor, level, profileLabel, ba
           isMobile={isMobile}
           currentUser={currentUser}
           title="Client Data"
-          scopeMode={isSubAdvisor ? "subadvisor" : "advisor"}
+          scopeMode={isSubAdvisor ? "subadvisor" : "advisorOwn"}
           scopeId={advisor.id}
         />
       )}
