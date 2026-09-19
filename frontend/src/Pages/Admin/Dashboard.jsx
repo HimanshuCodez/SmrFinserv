@@ -1180,7 +1180,7 @@ const Login = ({ onLogin }) => {
     const snapshot = await getDocs(q);
     const user = snapshot.docs.find(d => d.data().email === email && d.data().password === password);
     if (user) onLogin({ id: user.id, ...user.data() });
-    else toast.error("Invalid credentials (Try: admin@smr.com / admin123)");
+    else toast.error("Invalid email or password.");
   };
 
   return (
