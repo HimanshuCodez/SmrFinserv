@@ -39,45 +39,23 @@ const EmptyState = ({ icon, title, subtitle }) => (
   </div>
 );
 
-const PERMISSION_OPTIONS = [
-  { key: "records", label: "Data Records" },
-  { key: "employees", label: "Employee Data" },
-  { key: "consultants", label: "Advisor Data" },
-];
-
-// Users created before multi-permission support only had a single `role`.
-// Map those legacy roles to an equivalent permission set so old accounts keep working.
-const LEGACY_ROLE_PERMISSIONS = {
-  User: ["records"],
-  Employee: ["employees"],
-  Advisor: ["consultants"],
+const ROLE_LABELS = {
+  Admin: "Admin",
+  DataEntry: "Data Entry",
+  Advisor: "Advisor",
+  SubAdvisor: "Sub Advisor",
 };
 
-const getUserPermissions = (user) => {
-  if (!user) return [];
-  if (user.role === "Admin") return PERMISSION_OPTIONS.map(p => p.key);
-  if (Array.isArray(user.permissions)) return user.permissions;
-  return LEGACY_ROLE_PERMISSIONS[user.role] || ["records"];
+// Accounts created before the Data Entry role existed are stored as "User" or "Employee".
+const getPanelRole = (user) => {
+  if (!user) return null;
+  return ["Admin", "Advisor", "SubAdvisor"].includes(user.role) ? user.role : "DataEntry";
 };
 
 const AllUsers = ({ isMobile, users, currentUser }) => {
-  const handleAdminToggle = async (userId, makeAdmin) => {
+  const handleRoleChange = async (userId, role) => {
     try {
-      await updateDoc(doc(db, "users", userId), makeAdmin
-        ? { role: "Admin" }
-        : { role: "User", permissions: ["records"] });
-      toast.success("Access updated successfully!");
-    } catch (e) {
-      toast.error("Error updating access: " + e.message);
-    }
-  };
-
-  const handlePermissionToggle = async (userId, permKey, checked, currentPerms) => {
-    const newPerms = checked
-      ? [...new Set([...currentPerms, permKey])]
-      : currentPerms.filter(p => p !== permKey);
-    try {
-      await updateDoc(doc(db, "users", userId), { role: "User", permissions: newPerms });
+      await updateDoc(doc(db, "users", userId), { role });
       toast.success("Access updated successfully!");
     } catch (e) {
       toast.error("Error updating access: " + e.message);
@@ -98,7 +76,7 @@ const AllUsers = ({ isMobile, users, currentUser }) => {
   return (
     <div>
       <div style={{ marginBottom: 28 }}>
-        <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>All Users</h1>
+        <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>User Data</h1>
         <p style={{ color: "#64748b", fontSize: 13 }}>Manage and monitor all registered users</p>
       </div>
       <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
@@ -117,36 +95,27 @@ const AllUsers = ({ isMobile, users, currentUser }) => {
             <tbody>
               {users.map((user) => {
                 const isSelf = currentUser && user.id === currentUser.id;
-                const isAdmin = user.role === "Admin";
-                const perms = getUserPermissions(user);
+                const userPanelRole = getPanelRole(user);
+                const isPortalRole = userPanelRole === "Advisor" || userPanelRole === "SubAdvisor";
                 return (
                   <tr key={user.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
                     <td style={{ padding: "12px 20px", color: "#1e293b", fontSize: 13 }}>{user.name}</td>
                     <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.email}</td>
                     <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.phone}</td>
                     <td style={{ padding: "12px 20px" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#1e293b", cursor: isSelf ? "not-allowed" : "pointer" }}>
-                          <input
-                            type="checkbox"
-                            checked={isAdmin}
-                            disabled={isSelf}
-                            onChange={e => handleAdminToggle(user.id, e.target.checked)}
-                          />
-                          Admin (Full Access)
-                        </label>
-                        {!isAdmin && PERMISSION_OPTIONS.map(opt => (
-                          <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569", cursor: isSelf ? "not-allowed" : "pointer" }}>
-                            <input
-                              type="checkbox"
-                              checked={perms.includes(opt.key)}
-                              disabled={isSelf}
-                              onChange={e => handlePermissionToggle(user.id, opt.key, e.target.checked, perms)}
-                            />
-                            {opt.label}
-                          </label>
-                        ))}
-                      </div>
+                      {isPortalRole ? (
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#1e293b" }}>{ROLE_LABELS[userPanelRole]}</span>
+                      ) : (
+                        <select
+                          value={userPanelRole}
+                          disabled={isSelf}
+                          onChange={e => handleRoleChange(user.id, e.target.value)}
+                          style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#1e293b", cursor: isSelf ? "not-allowed" : "pointer" }}
+                        >
+                          <option value="Admin">{ROLE_LABELS.Admin}</option>
+                          <option value="DataEntry">{ROLE_LABELS.DataEntry}</option>
+                        </select>
+                      )}
                     </td>
                     <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.password}</td>
                     <td style={{ padding: "12px 20px" }}>
@@ -759,7 +728,7 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
   );
 };
 
-const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "admin" }) => {
+const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "admin", scopeId }) => {
   const [entries, setEntries] = useState([]);
   const [filter, setFilter] = useState("Motor");
   const [searchTerm, setSearchTerm] = useState("");
@@ -782,8 +751,9 @@ const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "a
                           (ent.name || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchesMonth = monthFilter === "" || ent.entryMonth === monthFilter;
     const matchesYear = yearFilter === "" || ent.entryYear === yearFilter;
-    const matchesScope = scopeMode === "advisor" ? ent.advisorId === currentUser?.consultantId
-      : scopeMode === "subadvisor" ? ent.subAdvisorId === currentUser?.consultantId
+    const targetId = scopeId || currentUser?.consultantId;
+    const matchesScope = scopeMode === "advisor" ? !!targetId && ent.advisorId === targetId && !ent.subAdvisorId
+      : scopeMode === "subadvisor" ? !!targetId && ent.subAdvisorId === targetId
       : true;
     return matchesCategory && matchesSearch && matchesMonth && matchesYear && matchesScope;
   });
@@ -1090,7 +1060,7 @@ const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "a
 };
 
 const CreateUser = ({ isMobile }) => {
-  const initialFormState = { name: "", email: "", phone: "", password: "", userRole: "User", consultantId: "", permissions: ["records"] };
+  const initialFormState = { name: "", email: "", phone: "", password: "", userRole: "DataEntry", consultantId: "" };
   const [form, setForm] = useState(initialFormState);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -1108,15 +1078,6 @@ const CreateUser = ({ isMobile }) => {
     return () => unsubscribe();
   }, [form.userRole]);
 
-  const togglePermission = (permKey, checked) => {
-    setForm(prev => ({
-      ...prev,
-      permissions: checked
-        ? [...new Set([...prev.permissions, permKey])]
-        : prev.permissions.filter(p => p !== permKey)
-    }));
-  };
-
   const handleSubmit = async () => {
     if (form.userRole === "Advisor" && !form.consultantId) {
       toast.error("Please select which advisor profile this login belongs to.");
@@ -1124,10 +1085,10 @@ const CreateUser = ({ isMobile }) => {
     }
     setLoading(true);
     try {
-      const { userRole, permissions, consultantId, ...rest } = form;
+      const { userRole, consultantId, ...rest } = form;
       const docData = userRole === "Advisor"
-        ? { ...rest, role: "Advisor", consultantId, parentAdvisorId: "", permissions: [] }
-        : { ...rest, role: userRole, permissions };
+        ? { ...rest, role: "Advisor", consultantId, parentAdvisorId: "" }
+        : { ...rest, role: userRole };
       await addDoc(collection(db, "users"), {
         ...docData,
         createdAt: serverTimestamp()
@@ -1161,11 +1122,11 @@ const CreateUser = ({ isMobile }) => {
 
        <div style={{ marginTop: 24, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8, fontWeight: 700 }}>Account Type</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: form.userRole === "User" ? 14 : 0 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
             {[
-              { key: "Admin", label: "Admin (Full Access)" },
-              { key: "User", label: "Staff User" },
-              { key: "Advisor", label: "Advisor (Portal Login)" },
+              { key: "Admin", label: "Admin (Main Admin Panel)" },
+              { key: "DataEntry", label: "Data Entry (Data Entry Panel)" },
+              { key: "Advisor", label: "Advisor (Advisor Panel)" },
             ].map(opt => (
               <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: opt.key === "Admin" ? 700 : 400, color: "#1e293b", cursor: "pointer" }}>
                 <input
@@ -1178,24 +1139,6 @@ const CreateUser = ({ isMobile }) => {
               </label>
             ))}
           </div>
-
-          {form.userRole === "User" && (
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>Grant access to (select any number):</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-                {PERMISSION_OPTIONS.map(opt => (
-                  <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#1e293b", cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={form.permissions.includes(opt.key)}
-                      onChange={e => togglePermission(opt.key, e.target.checked)}
-                    />
-                    {opt.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
 
           {form.userRole === "Advisor" && (
             <div style={{ marginTop: 14 }}>
@@ -1211,7 +1154,7 @@ const CreateUser = ({ isMobile }) => {
                 ))}
               </select>
               {advisorOptions.length === 0 && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>No unlinked advisor profiles found. Create one first under "Advisor Data".</div>
+                <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>No unlinked advisor profiles found. Create one first under "Create Advisor".</div>
               )}
             </div>
           )}
@@ -1627,7 +1570,7 @@ const PersonForm = ({ isMobile, type, parentAdvisorId, requireLogin }) => {
   );
 };
 
-const PersonList = ({ isMobile, type, parentAdvisorId }) => {
+const PersonList = ({ isMobile, type, parentAdvisorId, topLevelOnly, onSelect }) => {
   const collectionName = type === "Employee" ? "employees" : "consultants";
   const displayType = type === "Employee" ? "Employee" : "Advisor";
   const idFieldKey = type === "Employee" ? "employeeId" : "advisorId";
@@ -1649,10 +1592,11 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
       ? query(collection(db, collectionName), where("parentAdvisorId", "==", parentAdvisorId), orderBy("createdAt", "desc"))
       : query(collection(db, collectionName), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setItems(topLevelOnly ? docs.filter(d => !d.parentAdvisorId) : docs);
     });
     return () => unsubscribe();
-  }, [collectionName, parentAdvisorId]);
+  }, [collectionName, parentAdvisorId, topLevelOnly]);
 
   const handleDelete = async (id) => {
     if (window.confirm(`Are you sure you want to delete this ${displayType.toLowerCase()}?`)) {
@@ -1792,6 +1736,14 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
                     </button>
                   </td>
                   <td style={{ padding: "12px 20px", display: "flex", gap: 6 }}>
+                    {onSelect && (
+                      <button
+                        onClick={() => onSelect(item)}
+                        style={{ background: "#1e90ff", color: "#fff", border: "none", borderRadius: 4, padding: "4px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        VIEW
+                      </button>
+                    )}
                     <button
                       onClick={() => openEdit(item)}
                       style={{ background: "#f8fafc", color: "#16a34a", border: "1px solid #16a34a", borderRadius: 4, padding: "4px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
@@ -1974,60 +1926,290 @@ const PersonList = ({ isMobile, type, parentAdvisorId }) => {
   );
 };
 
-const EmployeeData = ({ isMobile }) => (
+const PageHeader = ({ isMobile, title, subtitle }) => (
+  <div style={{ marginBottom: 28 }}>
+    <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>{title}</h1>
+    {subtitle && <p style={{ color: "#64748b", fontSize: 13 }}>{subtitle}</p>}
+  </div>
+);
+
+const CreateEmployees = ({ isMobile }) => (
   <div>
-    <div style={{ marginBottom: 28 }}>
-      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>Employee Data</h1>
-      <p style={{ color: "#64748b", fontSize: 13 }}>Add a new employee record</p>
-    </div>
+    <PageHeader isMobile={isMobile} title="Create Employees" subtitle="Add a new employee record" />
     <PersonForm isMobile={isMobile} type="Employee" />
   </div>
 );
 
-const ConsultantData = ({ isMobile }) => (
+const EmployeesList = ({ isMobile, title }) => (
   <div>
-    <div style={{ marginBottom: 28 }}>
-      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>Advisor Data</h1>
-      <p style={{ color: "#64748b", fontSize: 13 }}>Add a new advisor record</p>
-    </div>
-    <PersonForm isMobile={isMobile} type="Consultant" />
-  </div>
-);
-
-const AllEmployees = ({ isMobile }) => (
-  <div>
-    <div style={{ marginBottom: 28 }}>
-      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>All Employees</h1>
-      <p style={{ color: "#64748b", fontSize: 13 }}>View and manage saved employee records</p>
-    </div>
+    <PageHeader isMobile={isMobile} title={title} subtitle="View and manage saved employee records" />
     <PersonList isMobile={isMobile} type="Employee" />
   </div>
 );
 
-const AllConsultants = ({ isMobile }) => (
+const CreateAdvisor = ({ isMobile }) => (
   <div>
-    <div style={{ marginBottom: 28 }}>
-      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>All Advisor</h1>
-      <p style={{ color: "#64748b", fontSize: 13 }}>View and manage saved advisor records</p>
-    </div>
-    <PersonList isMobile={isMobile} type="Consultant" />
+    <PageHeader isMobile={isMobile} title="Create Advisor" subtitle="Add a new advisor record. Give them a login from Create User." />
+    <PersonForm isMobile={isMobile} type="Consultant" />
   </div>
 );
 
 const CreateSubAdvisor = ({ isMobile, currentUser }) => (
   <div>
-    <div style={{ marginBottom: 28 }}>
-      <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>Create Sub Advisor</h1>
-      <p style={{ color: "#64748b", fontSize: 13 }}>Add a sub advisor under you, with their own login</p>
-    </div>
+    <PageHeader isMobile={isMobile} title="Create Sub-Advisor" subtitle="Add a sub-advisor under you, with their own login" />
     <PersonForm isMobile={isMobile} type="Consultant" parentAdvisorId={currentUser?.consultantId} requireLogin />
-
-    <div style={{ marginTop: 32 }}>
-      <h2 style={{ color: "#1e293b", fontSize: isMobile ? 18 : 20, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 16 }}>Your Sub Advisors</h2>
-      <PersonList isMobile={isMobile} type="Consultant" parentAdvisorId={currentUser?.consultantId} />
-    </div>
   </div>
 );
+
+const DetailRow = ({ label, value }) => (
+  <div>
+    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+    <div style={{ fontSize: 14, color: "#1e293b", wordBreak: "break-word" }}>{value || "-"}</div>
+  </div>
+);
+
+const docLinkStyle = { color: "#1e90ff", fontSize: 12, fontWeight: 700, textDecoration: "none", background: "#f0f9ff", padding: "8px 14px", borderRadius: 8, border: "1px solid #e0f2fe" };
+
+const ProfileCard = ({ isMobile, name, badge, photoUrl, rows, imageUrls = [], pdfUrls = [] }) => (
+  <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 20 : 32, boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
+      {photoUrl ? (
+        <img src={photoUrl} alt={name} style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover" }} />
+      ) : (
+        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>👤</div>
+      )}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#1e293b", fontFamily: "'Playfair Display', serif" }}>{name || "-"}</div>
+        <div style={{ fontSize: 11, color: "#1e90ff", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginTop: 4 }}>{badge}</div>
+      </div>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 20 }}>
+      {rows.map(r => <DetailRow key={r.label} label={r.label} value={r.value} />)}
+    </div>
+    {(imageUrls.length > 0 || pdfUrls.length > 0) && (
+      <div style={{ marginTop: 24, borderTop: "1px solid #e2e8f0", paddingTop: 20 }}>
+        <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 10 }}>Documents</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          {imageUrls.map((url, i) => <a key={`img-${i}`} href={url} target="_blank" rel="noreferrer" style={docLinkStyle}>IMAGE {i + 1}</a>)}
+          {pdfUrls.map((url, i) => <a key={`pdf-${i}`} href={url} target="_blank" rel="noreferrer" style={docLinkStyle}>PDF {i + 1}</a>)}
+        </div>
+      </div>
+    )}
+  </div>
+);
+
+const consultantProfile = (person, isMobile, badge) => (
+  <ProfileCard
+    isMobile={isMobile}
+    name={person.name}
+    badge={badge}
+    photoUrl={person.photoUrl}
+    imageUrls={person.imageUrls || []}
+    pdfUrls={person.pdfUrls || []}
+    rows={[
+      { label: "Advisor ID", value: person.advisorId },
+      { label: "Number", value: person.number },
+      { label: "Email", value: person.email },
+      { label: "Qualification", value: person.qualification },
+    ]}
+  />
+);
+
+const Profile = ({ isMobile, currentUser }) => {
+  const role = getPanelRole(currentUser);
+  const [person, setPerson] = useState(null);
+  const consultantId = currentUser?.consultantId;
+
+  useEffect(() => {
+    if (!consultantId) return;
+    let cancelled = false;
+    getDoc(doc(db, "consultants", consultantId))
+      .then(snap => { if (!cancelled) setPerson(snap.exists() ? { id: snap.id, ...snap.data() } : null); })
+      .catch(e => toast.error("Error loading profile: " + e.message));
+    return () => { cancelled = true; };
+  }, [consultantId]);
+
+  return (
+    <div>
+      <PageHeader isMobile={isMobile} title="Profile" subtitle="Your account details" />
+      {person ? (
+        <ProfileCard
+          isMobile={isMobile}
+          name={person.name}
+          badge={ROLE_LABELS[role]}
+          photoUrl={person.photoUrl}
+          imageUrls={person.imageUrls || []}
+          pdfUrls={person.pdfUrls || []}
+          rows={[
+            { label: "Advisor ID", value: person.advisorId },
+            { label: "Number", value: person.number },
+            { label: "Profile Email", value: person.email },
+            { label: "Qualification", value: person.qualification },
+            { label: "Login Email", value: currentUser.email },
+          ]}
+        />
+      ) : (
+        <ProfileCard
+          isMobile={isMobile}
+          name={currentUser.name}
+          badge={ROLE_LABELS[role]}
+          rows={[
+            { label: "Email", value: currentUser.email },
+            { label: "Phone", value: currentUser.phone },
+            { label: "Role", value: ROLE_LABELS[role] },
+          ]}
+        />
+      )}
+    </div>
+  );
+};
+
+const TabBar = ({ tabs, active, onChange }) => (
+  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+    {tabs.map(t => (
+      <button
+        key={t.key}
+        onClick={() => onChange(t.key)}
+        style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #e2e8f0", background: active === t.key ? "#1e90ff" : "#fff", color: active === t.key ? "#fff" : "#475569", cursor: "pointer", fontWeight: 700, fontSize: 13 }}
+      >
+        {t.label}
+      </button>
+    ))}
+  </div>
+);
+
+const AdvisorDetail = ({ isMobile, currentUser, advisor, level, profileLabel, backLabel, onBack }) => {
+  const isSubAdvisor = level === "subadvisor";
+  const tabs = [
+    { key: "profile", label: profileLabel },
+    { key: "clients", label: "Client Data" },
+    ...(isSubAdvisor ? [] : [{ key: "subs", label: "Sub-Advisor" }]),
+  ];
+  const [tab, setTab] = useState("profile");
+
+  return (
+    <div>
+      <button
+        onClick={onBack}
+        style={{ background: "transparent", border: "none", color: "#1e90ff", fontWeight: 700, fontSize: 13, cursor: "pointer", padding: 0, marginBottom: 12 }}
+      >
+        ← {backLabel}
+      </button>
+      <PageHeader isMobile={isMobile} title={advisor.name} subtitle={isSubAdvisor ? "Sub-Advisor" : "Advisor"} />
+      <TabBar tabs={tabs} active={tab} onChange={setTab} />
+      {tab === "profile" && consultantProfile(advisor, isMobile, isSubAdvisor ? "Sub Advisor" : "Advisor")}
+      {tab === "clients" && (
+        <UserRecord
+          isMobile={isMobile}
+          currentUser={currentUser}
+          title="Client Data"
+          scopeMode={isSubAdvisor ? "subadvisor" : "advisor"}
+          scopeId={advisor.id}
+        />
+      )}
+      {tab === "subs" && (
+        <AdvisorExplorer
+          isMobile={isMobile}
+          currentUser={currentUser}
+          parentAdvisorId={advisor.id}
+          profileLabel="Personal Details"
+          listLabel="Sub-Advisors"
+        />
+      )}
+    </div>
+  );
+};
+
+const AdvisorExplorer = ({ isMobile, currentUser, parentAdvisorId, profileLabel, listLabel }) => {
+  const [selected, setSelected] = useState(null);
+
+  if (selected) {
+    return (
+      <AdvisorDetail
+        isMobile={isMobile}
+        currentUser={currentUser}
+        advisor={selected}
+        level={parentAdvisorId ? "subadvisor" : "advisor"}
+        profileLabel={profileLabel}
+        backLabel={`Back to ${listLabel}`}
+        onBack={() => setSelected(null)}
+      />
+    );
+  }
+  return (
+    <PersonList
+      isMobile={isMobile}
+      type="Consultant"
+      parentAdvisorId={parentAdvisorId}
+      topLevelOnly={!parentAdvisorId}
+      onSelect={setSelected}
+    />
+  );
+};
+
+const AdvisorData = ({ isMobile, currentUser }) => (
+  <div>
+    <PageHeader isMobile={isMobile} title="Advisor Data" subtitle="Open an advisor to see their personal details, clients and sub-advisors" />
+    <AdvisorExplorer isMobile={isMobile} currentUser={currentUser} profileLabel="Personal Details" listLabel="Advisors" />
+  </div>
+);
+
+const SubAdvisorData = ({ isMobile, currentUser }) => (
+  <div>
+    <PageHeader isMobile={isMobile} title="Advisors Data" subtitle="Open a sub-advisor to see their profile and clients" />
+    <AdvisorExplorer
+      isMobile={isMobile}
+      currentUser={currentUser}
+      parentAdvisorId={currentUser.consultantId}
+      profileLabel="Advisor Profile"
+      listLabel="Advisors"
+    />
+  </div>
+);
+
+const PANELS = {
+  Admin: {
+    title: "Main Admin Panel",
+    items: [
+      { key: "records", label: "Record Data", icon: "📊" },
+      { key: "userrecord", label: "Find Data", icon: "🗂️" },
+      { key: "create", label: "Create User", icon: "➕" },
+      { key: "users", label: "User Data", icon: "👥" },
+      { key: "createAdvisor", label: "Create Advisor", icon: "➕" },
+      { key: "advisors", label: "Advisor Data", icon: "🧑‍🏫" },
+      { key: "createEmployees", label: "Create Employees", icon: "➕" },
+      { key: "employees", label: "Employees Data", icon: "🧑‍💼" },
+      { key: "sync", label: "Sync Settings", icon: "⚙️" },
+    ],
+  },
+  DataEntry: {
+    title: "Data Entry Panel",
+    items: [
+      { key: "profile", label: "Profile", icon: "👤" },
+      { key: "records", label: "Record Data", icon: "📊" },
+      { key: "createEmployees", label: "Create Employees", icon: "➕" },
+      { key: "employees", label: "Find Employees", icon: "🔎" },
+    ],
+  },
+  Advisor: {
+    title: "Advisor Panel",
+    items: [
+      { key: "profile", label: "Profile", icon: "👤" },
+      { key: "records", label: "Record Data", icon: "📊" },
+      { key: "userrecord", label: "Find Data", icon: "🗂️" },
+      { key: "createSubAdvisor", label: "Create Sub-Advisor", icon: "➕" },
+      { key: "subAdvisors", label: "Advisors Data", icon: "🧑‍🏫" },
+    ],
+  },
+  SubAdvisor: {
+    title: "Sub-Advisor Panel",
+    items: [
+      { key: "profile", label: "Profile", icon: "👤" },
+      { key: "records", label: "Record Data", icon: "📊" },
+      { key: "userrecord", label: "Find Data", icon: "🗂️" },
+    ],
+  },
+};
 
 export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState(JSON.parse(localStorage.getItem("adminUser")));
@@ -2035,18 +2217,6 @@ export default function Dashboard() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [collapsed, setCollapsed] = useState(window.innerWidth < 1024);
   const [users, setUsers] = useState([]);
-
-  useEffect(() => {
-    if (!currentUser || currentUser.role === "Admin") return;
-    if (currentUser.role === "Advisor" || currentUser.role === "SubAdvisor") {
-      setActive("recordclient");
-      return;
-    }
-    const perms = getUserPermissions(currentUser);
-    if (perms.includes("records")) setActive("records");
-    else if (perms.includes("employees")) setActive("employees");
-    else if (perms.includes("consultants")) setActive("consultants");
-  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser?.role === "Admin") {
@@ -2087,28 +2257,12 @@ export default function Dashboard() {
 
   if (!currentUser) return <Login onLogin={(u) => { setCurrentUser(u); localStorage.setItem("adminUser", JSON.stringify(u)); }} />;
 
-  const navItems = [
-    { key: "users", label: "All Users", icon: "👥", adminOnly: true },
-    { key: "create", label: "Create User", icon: "➕", adminOnly: true },
-    { key: "records", label: "Record Data", icon: "📊", permission: "records" },
-    { key: "userrecord", label: "Find Data", icon: "🗂️", adminOnly: true },
-    { key: "employees", label: "Employee Data", icon: "🧑‍💼", permission: "employees" },
-    { key: "consultants", label: "Advisor Data", icon: "🧑‍🏫", permission: "consultants" },
-    { key: "allEmployees", label: "All Employees", icon: "🧑‍🤝‍🧑", adminOnly: true },
-    { key: "allConsultants", label: "All Advisor", icon: "👥", adminOnly: true },
-    { key: "createSubAdvisor", label: "Create Sub Advisor", icon: "➕", roles: ["Advisor"] },
-    { key: "recordclient", label: "Record Client", icon: "📊", roles: ["Advisor", "SubAdvisor"] },
-    { key: "findclient", label: "Find Client", icon: "🗂️", roles: ["Advisor", "SubAdvisor"] },
-    { key: "sync", label: "Sync Settings", icon: "⚙️", adminOnly: true },
-  ];
-
-  const isAdmin = currentUser.role === "Admin";
-  const userPermissions = getUserPermissions(currentUser);
-  const filteredNavItems = navItems.filter(item =>
-    isAdmin
-    || (item.roles || []).includes(currentUser.role)
-    || (!item.adminOnly && !item.roles && userPermissions.includes(item.permission))
-  );
+  const panelRole = getPanelRole(currentUser);
+  const panel = PANELS[panelRole];
+  const navItems = panel.items;
+  const current = navItems.some(n => n.key === active) ? active : navItems[0].key;
+  const isPortalRole = panelRole === "Advisor" || panelRole === "SubAdvisor";
+  const missingProfileLink = isPortalRole && !currentUser.consultantId;
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "#f8fafc", color: "#1e293b", position: "relative", overflow: "hidden" }}>
@@ -2138,10 +2292,13 @@ export default function Dashboard() {
           {(!collapsed || isMobile) ? <Logo /> : <span style={{ fontSize: 24, fontWeight: 900, color: "#1e90ff" }}>S</span>}
           {isMobile && <button onClick={() => setCollapsed(true)} style={{ background: "transparent", border: "none", color: "#64748b", fontSize: 24, cursor: "pointer" }}>&times;</button>}
         </div>
+        {(!collapsed || isMobile) && (
+          <div style={{ padding: "0 20px 8px", fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "1px", textTransform: "uppercase" }}>{panel.title}</div>
+        )}
         <nav style={{ padding: 10, flex: 1, minHeight: 0, overflowY: "auto" }}>
-          {filteredNavItems.map(item => (
-            <button key={item.key} onClick={() => { setActive(item.key); if (isMobile) setCollapsed(true); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 15px", marginBottom: 5, background: active === item.key ? "#1e90ff11" : "transparent", border: "none", color: active === item.key ? "#1e90ff" : "#64748b", cursor: "pointer", borderRadius: 8, transition: "0.2s" }}>
-              <span style={{ fontSize: 20 }}>{item.icon}</span> {(!collapsed || isMobile) && <span style={{ fontWeight: active === item.key ? 700 : 500 }}>{item.label}</span>}
+          {navItems.map(item => (
+            <button key={item.key} onClick={() => { setActive(item.key); if (isMobile) setCollapsed(true); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 15px", marginBottom: 5, background: current === item.key ? "#1e90ff11" : "transparent", border: "none", color: current === item.key ? "#1e90ff" : "#64748b", cursor: "pointer", borderRadius: 8, transition: "0.2s" }}>
+              <span style={{ fontSize: 20 }}>{item.icon}</span> {(!collapsed || isMobile) && <span style={{ fontWeight: current === item.key ? 700 : 500 }}>{item.label}</span>}
             </button>
           ))}
           <button onClick={() => { localStorage.removeItem("adminUser"); setCurrentUser(null); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 15px", marginTop: 20, background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", borderRadius: 8 }}>
@@ -2155,38 +2312,39 @@ export default function Dashboard() {
         <header style={{ height: 64, borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobile ? "0 16px" : "0 24px", background: "#fff" }}>
            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <button onClick={() => setCollapsed(!collapsed)} style={{ background: "transparent", border: "none", color: "#1e293b", cursor: "pointer", fontSize: 20, padding: 8, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>☰</button>
-              <h2 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{navItems.find(n => n.key === active)?.label}</h2>
+              <h2 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{navItems.find(n => n.key === current)?.label}</h2>
            </div>
            <div style={{ textAlign: "right", minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{currentUser.name}</div>
-                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  {isAdmin ? "Admin"
-                    : currentUser.role === "Advisor" ? "Advisor"
-                    : currentUser.role === "SubAdvisor" ? "Sub Advisor"
-                    : (PERMISSION_OPTIONS.filter(p => userPermissions.includes(p.key)).map(p => p.label).join(" + ") || "No Access")}
-                </div>
+                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>{ROLE_LABELS[panelRole]}</div>
            </div>
         </header>
         <main style={{ flex: 1, padding: isMobile ? 16 : 24, overflowY: "auto", background: "#f8fafc" }}>
-          {active === "users" && <AllUsers isMobile={isMobile} users={users} currentUser={currentUser} />}
-          {active === "records" && <DataRecord isMobile={isMobile} currentUser={currentUser} />}
-          {active === "create" && <CreateUser isMobile={isMobile} />}
-          {active === "userrecord" && <UserRecord isMobile={isMobile} currentUser={currentUser} title="Find Data" scopeMode="admin" />}
-          {active === "employees" && <EmployeeData isMobile={isMobile} />}
-          {active === "consultants" && <ConsultantData isMobile={isMobile} />}
-          {active === "allEmployees" && <AllEmployees isMobile={isMobile} />}
-          {active === "allConsultants" && <AllConsultants isMobile={isMobile} />}
-          {active === "createSubAdvisor" && <CreateSubAdvisor isMobile={isMobile} currentUser={currentUser} />}
-          {active === "recordclient" && <DataRecord isMobile={isMobile} currentUser={currentUser} />}
-          {active === "findclient" && (
-            <UserRecord
-              isMobile={isMobile}
-              currentUser={currentUser}
-              title="Find Client"
-              scopeMode={currentUser.role === "Advisor" ? "advisor" : "subadvisor"}
-            />
+          {missingProfileLink && current !== "profile" ? (
+            <EmptyState icon="🔗" title="No Profile Linked" subtitle="This login is not linked to an advisor profile yet. Ask an admin to link it." />
+          ) : (
+            <>
+              {current === "profile" && <Profile isMobile={isMobile} currentUser={currentUser} />}
+              {current === "records" && <DataRecord isMobile={isMobile} currentUser={currentUser} />}
+              {current === "userrecord" && (
+                <UserRecord
+                  isMobile={isMobile}
+                  currentUser={currentUser}
+                  title="Find Data"
+                  scopeMode={panelRole === "Advisor" ? "advisor" : panelRole === "SubAdvisor" ? "subadvisor" : "admin"}
+                />
+              )}
+              {current === "create" && <CreateUser isMobile={isMobile} />}
+              {current === "users" && <AllUsers isMobile={isMobile} users={users} currentUser={currentUser} />}
+              {current === "createAdvisor" && <CreateAdvisor isMobile={isMobile} />}
+              {current === "advisors" && <AdvisorData isMobile={isMobile} currentUser={currentUser} />}
+              {current === "createEmployees" && <CreateEmployees isMobile={isMobile} />}
+              {current === "employees" && <EmployeesList isMobile={isMobile} title={navItems.find(n => n.key === "employees").label} />}
+              {current === "createSubAdvisor" && <CreateSubAdvisor isMobile={isMobile} currentUser={currentUser} />}
+              {current === "subAdvisors" && <SubAdvisorData isMobile={isMobile} currentUser={currentUser} />}
+              {current === "sync" && <SyncSettings isMobile={isMobile} />}
+            </>
           )}
-          {active === "sync" && <SyncSettings isMobile={isMobile} />}
         </main>
       </div>
     </div>
