@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { db, storage } from "../../firebase";
-import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, getDocs, updateDoc, doc, deleteDoc, where, limit, getDoc, setDoc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, getDocs, updateDoc, doc, deleteDoc, where, limit, getDoc, setDoc, runTransaction } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import toast, { Toaster } from "react-hot-toast";
 import { syncToGoogleSheets, syncAllToGoogleSheets } from "../../utils/googleSheets";
@@ -1375,7 +1375,50 @@ const uploadPersonFile = async (file, path) => {
   return await getDownloadURL(storageRef);
 };
 
-const PersonForm = ({ isMobile, type, parentAdvisorId, requireLogin, loginRole = "SubAdvisor" }) => {
+// Sequential IDs (ADV001, EMP001, ...) backed by a counter in settings/idCounters.
+// On first use the counter is seeded from the highest matching ID already saved, so old records don't collide.
+const ID_SEQUENCES = {
+  consultants: { prefix: "ADV", field: "advisorId" },
+  employees: { prefix: "EMP", field: "employeeId" },
+};
+
+const generateSequentialId = async (collectionName) => {
+  const { prefix, field } = ID_SEQUENCES[collectionName];
+  const counterRef = doc(db, "settings", "idCounters");
+  const pattern = new RegExp(`^${prefix}(\\d+)$`, "i");
+
+  let seed = 0;
+  const counterSnap = await getDoc(counterRef);
+  if (!counterSnap.exists() || typeof counterSnap.data()[prefix] !== "number") {
+    const existing = await getDocs(collection(db, collectionName));
+    existing.forEach(d => {
+      const match = String(d.data()[field] || "").trim().match(pattern);
+      if (match) seed = Math.max(seed, parseInt(match[1], 10));
+    });
+  }
+
+  const next = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(counterRef);
+    const current = snap.exists() && typeof snap.data()[prefix] === "number" ? snap.data()[prefix] : seed;
+    const value = current + 1;
+    tx.set(counterRef, { [prefix]: value }, { merge: true });
+    return value;
+  });
+  return `${prefix}${String(next).padStart(3, "0")}`;
+};
+
+const sendWelcomeEmail = async ({ to, name, role, id, loginEmail }) => {
+  const res = await fetch("/api/send-welcome-email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to, name, role, id, loginEmail }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+};
+
+const PersonForm =({ isMobile, type, parentAdvisorId, requireLogin, loginRole = "SubAdvisor" }) => {
   const collectionName = type === "Employee" ? "employees" : "consultants";
   const displayType = type === "Employee" ? "Employee" : "Advisor";
   const idFieldKey = type === "Employee" ? "employeeId" : "advisorId";
@@ -1429,13 +1472,14 @@ const PersonForm = ({ isMobile, type, parentAdvisorId, requireLogin, loginRole =
         : "";
 
       const finalQualification = form.qualification === "Other" ? form.customQualification : form.qualification;
+      const generatedId = await generateSequentialId(collectionName);
 
       const profileDocRef = await addDoc(collection(db, collectionName), {
         name: form.name,
         number: form.number,
         email: form.email,
         qualification: finalQualification,
-        [idFieldKey]: form.idNumber,
+        [idFieldKey]: generatedId,
         photoUrl,
         imageUrls,
         pdfUrls,
@@ -1456,7 +1500,22 @@ const PersonForm = ({ isMobile, type, parentAdvisorId, requireLogin, loginRole =
         });
       }
 
-      toast.success(`${displayType} saved successfully!`);
+      toast.success(`${displayType} saved successfully! ID: ${generatedId}`);
+
+      const recipient = form.email || form.loginEmail;
+      if (recipient) {
+        toast.promise(
+          sendWelcomeEmail({ to: recipient, name: form.name, role: displayType, id: generatedId, loginEmail: requireLogin ? form.loginEmail : "" }),
+          {
+            loading: "Sending welcome mail...",
+            success: `Welcome mail sent to ${recipient}`,
+            error: (err) => `Welcome mail failed: ${err.message}`,
+          }
+        );
+      } else {
+        toast("No email provided, welcome mail not sent.", { icon: "ℹ️" });
+      }
+
       setForm(initialFormState);
       setImages([]);
       setPdfs([]);
@@ -1537,7 +1596,7 @@ const PersonForm = ({ isMobile, type, parentAdvisorId, requireLogin, loginRole =
           </div>
           <div>
             <label style={labelStyle}>{displayType} ID</label>
-            <input type="text" value={form.idNumber} onChange={e => setForm({ ...form, idNumber: e.target.value })} style={inputStyle} placeholder={`Enter ${displayType} ID`} />
+            <input type="text" value="" readOnly disabled style={{ ...inputStyle, background: "#f1f5f9", cursor: "not-allowed" }} placeholder={`Auto-generated (${ID_SEQUENCES[collectionName].prefix}001, ${ID_SEQUENCES[collectionName].prefix}002...)`} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: form.qualification === "Other" ? 10 : 0 }}>
             <label style={labelStyle}>Qualification</label>
