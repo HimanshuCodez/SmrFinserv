@@ -1234,14 +1234,15 @@ const SyncSettings = ({ isMobile }) => {
   }, []);
 
   const handleSave = async () => {
-    if (!url.startsWith("https://script.google.com")) {
-      return toast.error("Please enter a valid Google Apps Script URL.");
+    const cleanUrl = url.trim();
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(cleanUrl)) {
+      return toast.error("Use the Web App URL from Deploy → Manage deployments (https://script.google.com/macros/s/.../exec).");
     }
     setSaving(true);
     try {
-      await setDoc(doc(db, "settings", "googleSheets"), { webAppUrl: url }, { merge: true });
-      setSavedUrl(url);
-      await syncExistingRecordsToSheet(url);
+      await setDoc(doc(db, "settings", "googleSheets"), { webAppUrl: cleanUrl }, { merge: true });
+      setSavedUrl(cleanUrl);
+      await syncExistingRecordsToSheet(cleanUrl);
       toast.success("Google Sheets URL saved!");
     } catch (e) {
       toast.error("Error saving URL: " + e.message);

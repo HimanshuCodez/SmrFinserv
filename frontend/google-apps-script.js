@@ -312,6 +312,17 @@ function sendWelcomeEmail(payload) {
   return { ok: true, id: body.id };
 }
 
+// Run this once from the Apps Script editor to grant the "connect to an external service" permission
+// needed by sendWelcomeEmail. It only checks the API key; no mail is sent.
+function authorizeResend() {
+  const apiKey = PropertiesService.getScriptProperties().getProperty("RESEND_API_KEY");
+  const response = UrlFetchApp.fetch("https://api.resend.com/api-keys", {
+    headers: { Authorization: "Bearer " + apiKey },
+    muteHttpExceptions: true
+  });
+  console.log("Resend responded with " + response.getResponseCode() + " (200 = key OK)");
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, function(c) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
