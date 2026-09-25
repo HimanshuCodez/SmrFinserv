@@ -62,6 +62,11 @@ function doGet() {
 function doPost(e) {
   try {
     const payload = parsePayload(e);
+
+    if (payload.action === "sendWelcomeEmail") {
+      return jsonResponse(sendWelcomeEmail(payload));
+    }
+
     const category = normalizeCategory(payload.category);
 
     if (!category) {
@@ -250,6 +255,67 @@ function normalizeCategory(category) {
     MutualFund: "MutualFund"
   };
   return allowed[category] || "";
+}
+
+// Welcome mail for new advisors / employees, sent through Resend.
+// Set these in Apps Script → Project Settings → Script Properties:
+//   RESEND_API_KEY  - required
+//   RESEND_FROM     - optional, e.g. "SMR Finserv <no-reply@smrfinserv.com>" once the domain is verified.
+//                     Until then Resend's test sender is used, which only delivers to your own Resend account email.
+function sendWelcomeEmail(payload) {
+  const props = PropertiesService.getScriptProperties();
+  const apiKey = props.getProperty("RESEND_API_KEY");
+  if (!apiKey) return { ok: false, error: "RESEND_API_KEY is not set in Script Properties" };
+
+  const to = String(payload.to || "").trim();
+  const id = String(payload.id || "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { ok: false, error: "A valid recipient email is required" };
+  if (!/^(ADV|EMP)\d{3,}$/.test(id)) return { ok: false, error: "Invalid ID" };
+
+  const roleLabel = payload.role === "Employee" ? "Employee" : "Advisor";
+  const name = payload.name || "there";
+  const loginEmail = payload.loginEmail || "";
+
+  const html =
+    '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b">' +
+    '<h2 style="color:#1e90ff;margin:0 0 16px">Welcome to SMR Finserv!</h2>' +
+    "<p>Hi " + escapeHtml(name) + ",</p>" +
+    "<p>We're delighted to have you on board as an " + roleLabel.toLowerCase() + " with SMR Finserv.</p>" +
+    '<p style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:14px 18px;font-size:16px">' +
+    "Your " + roleLabel + " ID is <strong>" + escapeHtml(id) + "</strong></p>" +
+    (loginEmail ? "<p>You can log in to the portal using <strong>" + escapeHtml(loginEmail) + "</strong>.</p>" : "") +
+    "<p>Please keep this ID for your records.</p>" +
+    '<p style="margin-top:28px">Regards,<br/>Team SMR Finserv</p></div>';
+
+  const text = "Welcome to SMR Finserv!\n\nHi " + name + ",\n\nYour " + roleLabel + " ID is " + id + "." +
+    (loginEmail ? "\nLogin email: " + loginEmail : "") + "\n\nRegards,\nTeam SMR Finserv";
+
+  const response = UrlFetchApp.fetch("https://api.resend.com/emails", {
+    method: "post",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + apiKey },
+    payload: JSON.stringify({
+      from: props.getProperty("RESEND_FROM") || "SMR Finserv <onboarding@resend.dev>",
+      to: [to],
+      subject: "Welcome to SMR Finserv - Your " + roleLabel + " ID is " + id,
+      html: html,
+      text: text
+    }),
+    muteHttpExceptions: true
+  });
+
+  let body = {};
+  try { body = JSON.parse(response.getContentText()); } catch (ignored) {}
+  if (response.getResponseCode() >= 300) {
+    return { ok: false, error: body.message || "Resend error " + response.getResponseCode() };
+  }
+  return { ok: true, id: body.id };
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function(c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
 }
 
 function jsonResponse(data) {

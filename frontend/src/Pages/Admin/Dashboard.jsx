@@ -1407,14 +1407,21 @@ const generateSequentialId = async (collectionName) => {
   return `${prefix}${String(next).padStart(3, "0")}`;
 };
 
+// Mail is sent by the Google Apps Script web app (same URL as the Sheets sync), which holds the Resend API key.
 const sendWelcomeEmail = async ({ to, name, role, id, loginEmail }) => {
-  const res = await fetch("/api/send-welcome-email", {
+  const settingsSnap = await getDoc(doc(db, "settings", "googleSheets"));
+  const webAppUrl = settingsSnap.exists() ? settingsSnap.data().webAppUrl : "";
+  if (!webAppUrl) throw new Error("Google Apps Script URL is not saved in Settings.");
+
+  const res = await fetch(webAppUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ to, name, role, id, loginEmail }),
+    redirect: "follow",
+    body: new URLSearchParams({
+      payload: JSON.stringify({ action: "sendWelcomeEmail", to, name, role, id, loginEmail }),
+    }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  if (!data.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 };
 
