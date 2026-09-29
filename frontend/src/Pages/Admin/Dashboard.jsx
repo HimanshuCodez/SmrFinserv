@@ -2022,8 +2022,8 @@ const EmployeesList = ({ isMobile, title }) => (
 
 const CreateAdvisor = ({ isMobile }) => (
   <div>
-    <PageHeader isMobile={isMobile} title="Create Advisor" subtitle="Add a new advisor, with their own login" />
-    <PersonForm isMobile={isMobile} type="Consultant" requireLogin loginRole="Advisor" />
+    <PageHeader isMobile={isMobile} title="Create Advisor" subtitle="Add a new advisor record" />
+    <PersonForm isMobile={isMobile} type="Consultant" />
   </div>
 );
 

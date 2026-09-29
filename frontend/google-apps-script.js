@@ -261,7 +261,7 @@ function normalizeCategory(category) {
 // Set these in Apps Script → Project Settings → Script Properties:
 //   RESEND_API_KEY  - required
 //   RESEND_FROM     - optional, e.g. "SMR Finserv <no-reply@smrfinserv.com>" once the domain is verified.
-//                     Until then Resend's test sender is used, which only delivers to your own Resend account email.
+//                     Defaults to no-reply@smrfinserv.com (domain verified on Resend).
 function sendWelcomeEmail(payload) {
   const props = PropertiesService.getScriptProperties();
   const apiKey = props.getProperty("RESEND_API_KEY");
@@ -295,7 +295,7 @@ function sendWelcomeEmail(payload) {
     contentType: "application/json",
     headers: { Authorization: "Bearer " + apiKey },
     payload: JSON.stringify({
-      from: props.getProperty("RESEND_FROM") || "SMR Finserv <onboarding@resend.dev>",
+      from: props.getProperty("RESEND_FROM") || "SMR Finserv <no-reply@smrfinserv.com>",
       to: [to],
       subject: "Welcome to SMR Finserv - Your " + roleLabel + " ID is " + id,
       html: html,
