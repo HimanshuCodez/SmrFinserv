@@ -2029,8 +2029,8 @@ const CreateAdvisor = ({ isMobile }) => (
 
 const CreateSubAdvisor = ({ isMobile, currentUser }) => (
   <div>
-    <PageHeader isMobile={isMobile} title="Create Sub-Advisor" subtitle="Add a sub-advisor under you, with their own login" />
-    <PersonForm isMobile={isMobile} type="Consultant" parentAdvisorId={currentUser?.consultantId} requireLogin />
+    <PageHeader isMobile={isMobile} title="Create Sub-Advisor" subtitle="Add a sub-advisor record under you" />
+    <PersonForm isMobile={isMobile} type="Consultant" parentAdvisorId={currentUser?.consultantId} />
   </div>
 );
 
