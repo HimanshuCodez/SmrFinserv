@@ -270,25 +270,17 @@ function sendWelcomeEmail(payload) {
   const to = String(payload.to || "").trim();
   const id = String(payload.id || "").trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { ok: false, error: "A valid recipient email is required" };
-  if (!/^(ADV|EMP)\d{3,}$/.test(id)) return { ok: false, error: "Invalid ID" };
-
   const roleLabel = payload.role === "Employee" ? "Employee" : "Advisor";
-  const name = payload.name || "there";
-  const loginEmail = payload.loginEmail || "";
+  // Accept existing IDs as well as the new prefixes; always display the saved ID verbatim.
+  const idPattern = roleLabel === "Employee" ? /^(SMRE|EMP)\d{3,}$/ : /^(SMR|ADV)\d{3,}$/;
+  if (!idPattern.test(id)) return { ok: false, error: "Invalid " + roleLabel + " ID" };
 
-  const html =
-    '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b">' +
-    '<h2 style="color:#1e90ff;margin:0 0 16px">Welcome to SMR Finserv!</h2>' +
-    "<p>Hi " + escapeHtml(name) + ",</p>" +
-    "<p>We're delighted to have you on board as an " + roleLabel.toLowerCase() + " with SMR Finserv.</p>" +
-    '<p style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:14px 18px;font-size:16px">' +
-    "Your " + roleLabel + " ID is <strong>" + escapeHtml(id) + "</strong></p>" +
-    (loginEmail ? "<p>You can log in to the portal using <strong>" + escapeHtml(loginEmail) + "</strong>.</p>" : "") +
-    "<p>Please keep this ID for your records.</p>" +
-    '<p style="margin-top:28px">Regards,<br/>Team SMR Finserv</p></div>';
-
-  const text = "Welcome to SMR Finserv!\n\nHi " + name + ",\n\nYour " + roleLabel + " ID is " + id + "." +
-    (loginEmail ? "\nLogin email: " + loginEmail : "") + "\n\nRegards,\nTeam SMR Finserv";
+  const email = buildWelcomeEmail({
+    name: String(payload.name || "").trim() || "New Team Member",
+    roleLabel: roleLabel,
+    id: id,
+    loginEmail: String(payload.loginEmail || "").trim()
+  });
 
   const response = UrlFetchApp.fetch("https://api.resend.com/emails", {
     method: "post",
@@ -298,8 +290,8 @@ function sendWelcomeEmail(payload) {
       from: props.getProperty("RESEND_FROM") || "SMR Finserv <no-reply@smrfinserv.com>",
       to: [to],
       subject: "Welcome to SMR Finserv - Your " + roleLabel + " ID is " + id,
-      html: html,
-      text: text
+      html: email.html,
+      text: email.text
     }),
     muteHttpExceptions: true
   });
@@ -310,6 +302,147 @@ function sendWelcomeEmail(payload) {
     return { ok: false, error: body.message || "Resend error " + response.getResponseCode() };
   }
   return { ok: true, id: body.id };
+}
+
+// Table layout and inline styles keep the welcome readable across email clients.
+// Build both formats from the same partner list so the plain-text version stays complete.
+function buildWelcomeEmail(details) {
+  const partnerGroups = [
+    {
+      title: "General Insurance",
+      names: ["ICICI Lombard", "Bajaj General Insurance", "Tata AIG", "SBI General", "New India Assurance", "Go Digit"]
+    },
+    {
+      title: "Health Insurance",
+      names: ["Niva Bupa", "Aditya Birla Health Insurance", "ICICI Lombard", "SBI General"]
+    },
+    {
+      title: "Life Insurance",
+      names: ["LIC of India", "Axis Max Life", "ICICI Prudential Life Insurance", "Bajaj Life Insurance"]
+    }
+  ];
+  const name = escapeHtml(details.name);
+  const roleLabel = escapeHtml(details.roleLabel);
+  const id = escapeHtml(details.id);
+  const loginEmail = escapeHtml(details.loginEmail);
+  const partnerHtml = partnerGroups.map(function(group) {
+    const rows = [];
+    for (let i = 0; i < group.names.length; i += 2) {
+      const cells = group.names.slice(i, i + 2).map(function(partner) {
+        return '<td class="partner-cell" width="50%" valign="top" style="padding:5px 12px 5px 0;font-size:14px;line-height:22px;color:#475569;">' +
+          '<span style="color:#2877b8;">&#8226;</span>&nbsp; ' + escapeHtml(partner) + '</td>';
+      }).join("");
+      rows.push('<tr>' + cells + '</tr>');
+    }
+    return '<tr><td style="padding:20px 0;border-bottom:1px solid #e2e8f0;">' +
+      '<h3 style="margin:0 0 8px;font-size:16px;line-height:24px;color:#17365c;">' + escapeHtml(group.title) + '</h3>' +
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;">' + rows.join("") + '</table>' +
+      '</td></tr>';
+  }).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Welcome to SMR Finserv</title>
+  <style>
+    body { margin:0; padding:0; }
+    table { border-collapse:collapse; mso-table-lspace:0pt; mso-table-rspace:0pt; }
+    @media only screen and (max-width:620px) {
+      .outer-padding { padding:12px 8px !important; }
+      .content-padding { padding-left:22px !important; padding-right:22px !important; }
+      .welcome-title { font-size:28px !important; line-height:36px !important; }
+      .partner-cell { display:block !important; width:100% !important; padding-right:0 !important; }
+      .member-id { font-size:28px !important; letter-spacing:2px !important; }
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:#edf2f7;font-family:Arial,Helvetica,sans-serif;color:#334155;-webkit-text-size-adjust:100%;">
+  <div style="display:none;font-size:1px;line-height:1px;color:#edf2f7;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Welcome to the SMR Finserv Family! Your ${roleLabel} ID: ${id}. Let’s Learn • Grow • Achieve • Succeed.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#edf2f7">
+    <tr><td class="outer-padding" align="center" style="padding:36px 16px;">
+      <!--[if mso]><table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:640px;border:1px solid #dce5ef;">
+        <tr><td bgcolor="#f2ce38" height="5" style="height:5px;font-size:0;line-height:0;">&nbsp;</td></tr>
+        <tr><td class="content-padding" style="padding:26px 40px 24px;">
+          <p style="margin:0;color:#2877b8;font-size:25px;line-height:30px;font-weight:800;letter-spacing:2px;">SMR FINSERV</p>
+          <p style="margin:5px 0 0;color:#64748b;font-size:10px;line-height:16px;letter-spacing:2px;">IMF PVT LTD</p>
+        </td></tr>
+        <tr><td class="content-padding" bgcolor="#132f52" style="padding:36px 40px;color:#ffffff;">
+          <p style="margin:0 0 14px;font-size:12px;line-height:20px;font-weight:700;letter-spacing:2px;color:#f2ce38;">🎉 WELCOME TO</p>
+          <h1 class="welcome-title" style="margin:0;font-size:34px;line-height:43px;font-weight:700;color:#ffffff;">SMR FINSERV<br>IMF PVT LTD 🎉</h1>
+          <p style="margin:22px 0 0;font-size:15px;line-height:26px;color:#d8e8fa;">Learn <span style="color:#f2ce38;">•</span> Grow <span style="color:#f2ce38;">•</span> Achieve <span style="color:#f2ce38;">•</span> Succeed</p>
+        </td></tr>
+        <tr><td class="content-padding" style="padding:32px 40px 0;">
+          <p style="margin:0 0 16px;font-size:16px;line-height:26px;color:#17365c;font-weight:700;overflow-wrap:anywhere;">Dear ${name},</p>
+          <p style="margin:0 0 12px;font-size:16px;line-height:27px;">A very warm welcome to the <strong style="color:#17365c;">SMR Finserv Family!</strong> 🤝💙</p>
+          <p style="margin:0;font-size:15px;line-height:26px;">We are delighted to have you join us. Together, let’s <strong>Learn • Grow • Achieve • Succeed</strong> and build a stronger future.</p>
+        </td></tr>
+        <tr><td class="content-padding" style="padding:24px 40px 28px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f0f6fc" style="border:1px solid #cddff0;border-left:4px solid #2877b8;table-layout:fixed;">
+            <tr><td style="padding:22px 24px;">
+              <p style="margin:0 0 8px;font-size:11px;line-height:18px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#42658a;">Your ${roleLabel} ID</p>
+              <p class="member-id" style="margin:0;font-size:32px;line-height:40px;letter-spacing:3px;font-weight:700;color:#17365c;overflow-wrap:anywhere;word-break:break-word;">${id}</p>
+              <p style="margin:10px 0 0;font-size:13px;line-height:21px;color:#526880;">Please keep this ID for your records.</p>
+              ${loginEmail ? `<p style="margin:16px 0 0;padding-top:14px;border-top:1px solid #cddff0;font-size:13px;line-height:22px;color:#526880;">You can log in to the portal using<br><strong style="color:#17365c;overflow-wrap:anywhere;word-break:break-all;">${loginEmail}</strong></p>` : ""}
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td class="content-padding" style="padding:0 40px;">
+          <h2 style="margin:0 0 10px;font-size:21px;line-height:30px;color:#17365c;">Insurance &amp; Financial Solutions<br>Under One Roof</h2>
+          <p style="margin:0 0 24px;font-size:14px;line-height:24px;color:#64748b;">SMR Finserv IMF Pvt Ltd brings insurance and financial solutions together for you.</p>
+          <p style="margin:0;padding-bottom:12px;border-bottom:2px solid #2877b8;font-size:11px;line-height:20px;font-weight:700;letter-spacing:1.5px;color:#42658a;text-transform:uppercase;">Our Key Channel Partners</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${partnerHtml}</table>
+          <p style="margin:18px 0 26px;font-size:14px;line-height:24px;color:#42658a;">✨ And many more insurance &amp; financial solutions</p>
+        </td></tr>
+        <tr><td class="content-padding" style="padding:0 40px 28px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f8fafc" style="border:1px solid #e2e8f0;table-layout:fixed;">
+            <tr><td style="padding:20px 22px;">
+              <p style="margin:0 0 5px;font-size:14px;line-height:22px;font-weight:700;color:#17365c;">IRDAI Approved IMF</p>
+              <p style="margin:0;font-size:13px;line-height:22px;color:#526880;overflow-wrap:anywhere;">License No.: <strong>IMF08790220250768</strong></p>
+              <p style="margin:14px 0 0;padding-top:14px;border-top:1px solid #e2e8f0;font-size:14px;line-height:22px;color:#17365c;">🇮🇳 <strong>Start Up India Registered</strong></p>
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td class="content-padding" style="padding:0 40px 32px;">
+          <p style="margin:0 0 22px;font-size:16px;line-height:26px;color:#17365c;">Once again, <strong>Welcome to SMR Finserv!</strong></p>
+          <p style="margin:0;font-size:18px;line-height:28px;font-weight:700;color:#17365c;">Rajesh Pandey</p>
+          <p style="margin:3px 0 0;font-size:13px;line-height:22px;color:#64748b;">Founder<br>SMR FINSERV IMF PVT LTD</p>
+        </td></tr>
+        <tr><td class="content-padding" bgcolor="#132f52" style="padding:25px 40px;color:#ffffff;">
+          <p style="margin:0 0 12px;font-size:11px;line-height:18px;font-weight:700;letter-spacing:1.5px;color:#f2ce38;">LET’S STAY CONNECTED</p>
+          <p style="margin:0 0 8px;font-size:14px;line-height:25px;">📞 <a href="tel:+919971418462" style="color:#ffffff;text-decoration:none;white-space:nowrap;">9971418462</a> &nbsp;|&nbsp; <a href="tel:+919711971269" style="color:#ffffff;text-decoration:none;white-space:nowrap;">9711971269</a></p>
+          <p style="margin:0 0 8px;font-size:14px;line-height:25px;">🌐 <a href="https://www.smrfinserv.com" style="color:#ffffff;text-decoration:underline;">www.smrfinserv.com</a></p>
+          <p style="margin:0;font-size:14px;line-height:25px;">📧 <a href="mailto:Contact@smrfinserv.com" style="color:#ffffff;text-decoration:underline;overflow-wrap:anywhere;">Contact@smrfinserv.com</a></p>
+        </td></tr>
+      </table>
+      <!--[if mso]></td></tr></table><![endif]-->
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  const text = [
+    "🎉 WELCOME TO SMR FINSERV IMF PVT LTD 🎉",
+    "Dear " + details.name + ",",
+    "A very warm welcome to the SMR Finserv Family! 🤝💙\nWe are delighted to have you join us. Together, let’s Learn • Grow • Achieve • Succeed and build a stronger future.",
+    "Your " + details.roleLabel + " ID: " + details.id + "\nPlease keep this ID for your records." +
+      (details.loginEmail ? "\nYou can log in to the portal using: " + details.loginEmail : ""),
+    "SMR Finserv IMF Pvt Ltd deals in Insurance & Financial Solutions Under One Roof",
+    "Our Key Channel Partners:\n\n" + partnerGroups.map(function(group) {
+      return group.title + "\n" + group.names.map(function(partner) { return "• " + partner; }).join("\n");
+    }).join("\n\n"),
+    "✨ And many more insurance & financial solutions",
+    "We are IRDAI Approved IMF\nLicense No.: IMF08790220250768\n🇮🇳 Start Up India Registered",
+    "Once again, Welcome to SMR Finserv!",
+    "Rajesh Pandey\nFounder SMR FINSERV IMF PVT LTD",
+    "📞 9971418462 | 9711971269\n🌐 www.smrfinserv.com\n📧 Contact@smrfinserv.com"
+  ].join("\n\n");
+
+  return { html: html, text: text };
 }
 
 // Run this once from the Apps Script editor to grant the "connect to an external service" permission

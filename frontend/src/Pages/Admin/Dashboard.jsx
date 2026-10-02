@@ -1376,21 +1376,23 @@ const uploadPersonFile = async (file, path) => {
   return await getDownloadURL(storageRef);
 };
 
-// Sequential IDs (ADV001, EMP001, ...) backed by a counter in settings/idCounters.
-// On first use the counter is seeded from the highest matching ID already saved, so old records don't collide.
+// Sequential IDs (SMR001, SMRE001, ...) backed by a counter in settings/idCounters.
+// Continue the legacy numbering on first use without changing any saved IDs.
 const ID_SEQUENCES = {
-  consultants: { prefix: "ADV", field: "advisorId" },
-  employees: { prefix: "EMP", field: "employeeId" },
+  consultants: { prefix: "SMR", legacyPrefix: "ADV", field: "advisorId" },
+  employees: { prefix: "SMRE", legacyPrefix: "EMP", field: "employeeId" },
 };
 
 const generateSequentialId = async (collectionName) => {
-  const { prefix, field } = ID_SEQUENCES[collectionName];
+  const { prefix, legacyPrefix, field } = ID_SEQUENCES[collectionName];
   const counterRef = doc(db, "settings", "idCounters");
-  const pattern = new RegExp(`^${prefix}(\\d+)$`, "i");
+  const pattern = new RegExp(`^(?:${prefix}|${legacyPrefix})(\\d+)$`, "i");
 
   let seed = 0;
   const counterSnap = await getDoc(counterRef);
   if (!counterSnap.exists() || typeof counterSnap.data()[prefix] !== "number") {
+    seed = counterSnap.exists() && typeof counterSnap.data()[legacyPrefix] === "number"
+      ? counterSnap.data()[legacyPrefix] : 0;
     const existing = await getDocs(collection(db, collectionName));
     existing.forEach(d => {
       const match = String(d.data()[field] || "").trim().match(pattern);
