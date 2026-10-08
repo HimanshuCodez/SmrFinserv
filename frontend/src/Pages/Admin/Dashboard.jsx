@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { db, storage } from "../../firebase";
-import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, getDocs, updateDoc, doc, deleteDoc, where, limit, getDoc, setDoc, runTransaction } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, getDocs, updateDoc, doc, deleteDoc, where, getDoc, setDoc, runTransaction } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import toast, { Toaster } from "react-hot-toast";
 import { syncToGoogleSheets, syncAllToGoogleSheets } from "../../utils/googleSheets";
+import ExcelExportButton from "../../Components/ExcelExportButton";
+import { getColumnValue } from "../../utils/excelExport";
 
 const SMR_LOGO = "https://i.postimg.cc/Fsbgy6sQ/smr.png";
 
@@ -80,8 +82,19 @@ const AllUsers = ({ isMobile, users, currentUser }) => {
         <p style={{ color: "#64748b", fontSize: 13 }}>Manage and monitor all registered users</p>
       </div>
       <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
-        <div style={{ padding: isMobile ? "16px" : "20px 24px", borderBottom: "1px solid #e2e8f0" }}>
+        <div style={{ padding: isMobile ? "16px" : "20px 24px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span style={{ color: "#1e293b", fontWeight: 700, fontSize: 15 }}>User Directory</span>
+          <ExcelExportButton
+            rows={users}
+            columns={[
+              { header: "User", key: "name" },
+              { header: "Email", key: "email" },
+              { header: "Phone", key: "phone" },
+              { header: "Access", value: user => ROLE_LABELS[getPanelRole(user)] },
+            ]}
+            sheetName="Users"
+            fileName="SMR_Users"
+          />
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
@@ -728,6 +741,59 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
   );
 };
 
+// The table and workbook share column definitions so their values stay aligned.
+const RECORD_BASE_COLUMNS = [
+  { header: "SL", value: (entry, index) => entry.slNo || index + 1 },
+  { header: "Month", value: entry => entry.entryMonth ? `${entry.entryMonth}/${entry.entryYear}` : "-" },
+];
+const RECORD_COLUMNS = Object.fromEntries(Object.entries({
+  Motor: [
+    ["Vehicle No", "vehicleNumber"], ["Policy No", "policyNo"], ["Make", "make"],
+    ["Model", "model"], ["IMD Code", "imdCode"], ["Mobile No", "mobileNo"],
+    ["Name", "name"], ["Company", "company"], ["Vehicle Type", "vehicleType"],
+    ["Policy Type", "policyType"], ["Tenure", "tenure"], ["Risk start Date", "riskDate"],
+    ["Risk End date", "endDate"], ["OD", "od", true], ["TP", "tp", true],
+    ["Net Prem", "netPrem", true], ["Total prem", "prem", true],
+  ],
+  Health: [
+    ["Policy No", "policyNo"], ["Company", "company"], ["Business Type", "subType"],
+    ["Plan Name", "plan"], ["IMD Code", "imdCode"], ["Mobile No", "mobileNo"],
+    ["Name", "name"], ["Sum Assured", "sumAssured", true], ["Family", "familyMembers"],
+    ["Bonus", "bonus", true], ["Tenure", "tenure"], ["Risk start Date", "riskDate"],
+    ["Risk End date", "endDate"], ["Total prem", "prem", true],
+  ],
+  SME: [
+    ["Policy No", "policyNo"], ["Company", "company"], ["Type", "subType"],
+    ["IMD Code", "imdCode"], ["Mobile No", "mobileNo"], ["Product", "productName"],
+    ["Name", "name"], ["Sum Assured", "sumAssured", true], ["Tenure", "tenure"],
+    ["Risk start Date", "riskDate"], ["Risk End date", "endDate"],
+    ["Net Prem", "netPrem", true], ["Total prem", "prem", true],
+  ],
+  Life: [
+    ["Policy No", "policyNo"], ["Company", "company"], ["Plan", "plan"],
+    ["IMD Code", "imdCode"], ["Mobile No", "mobileNo"], ["Name", "name"],
+    ["Sum Assured", "sumAssured", true], ["Payment Type", "paymentType"],
+    ["Tenure", "tenure"], ["Risk start Date", "riskDate"], ["Risk End date", "endDate"],
+    ["OD", "od", true], ["TP", "tp", true], ["Net Prem", "netPrem", true],
+    ["Total prem", "prem", true],
+  ],
+  MutualFund: [
+    ["Folio No", "folioNo"], ["Company", "company"], ["Fund Name", "productName"],
+    ["IMD Code", "imdCode"], ["Mobile No", "mobileNo"], ["Name", "name"],
+    ["Amount", "amount", true], ["Payment Date", "paymentDate"],
+    ["Next Payment", "nextPaymentDate"], ["Tenure", "tenure"],
+    ["Risk start Date", "riskDate"], ["Risk End date", "endDate"],
+    ["Net Prem", "netPrem", true], ["Total prem", "prem", true],
+  ],
+}).map(([category, fields]) => [category, [
+  ...RECORD_BASE_COLUMNS,
+  ...fields.map(([header, key, numeric = false]) => ({ header, key, numeric })),
+  { header: "Payout", key: "payout", numeric: true },
+  { header: "Co%", key: "companyPercentage", numeric: true },
+  { header: "Remarks", key: "remarks" },
+  { header: "Created By", key: "addedByName" },
+]]));
+
 const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "admin", scopeId }) => {
   const [entries, setEntries] = useState([]);
   const [filter, setFilter] = useState("Motor");
@@ -770,24 +836,11 @@ const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "a
     }
   };
 
-  const motorHeaders = ["SL", "Month", "Vehicle No", "Policy No", "Make", "Model", "IMD Code", "Mobile No", "Name", "Company", "Vehicle Type", "Policy Type", "Tenure", "Risk start Date", "Risk End date", "OD", "TP", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Created By", "Actions"];
-  const healthHeaders = ["SL", "Month", "Policy No", "Company", "Business Type", "Plan Name", "IMD Code", "Mobile No", "Name", "Sum Assured", "Family", "Bonus", "Tenure", "Risk start Date", "Risk End date", "Total prem", "Payout", "Co%", "Remarks", "Created By", "Actions"];
-  const smeHeaders = ["SL", "Month", "Policy No", "Company", "Type", "IMD Code", "Mobile No", "Product", "Name", "Sum Assured", "Tenure", "Risk start Date", "Risk End date", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Created By", "Actions"];
-  const lifeHeaders = ["SL", "Month", "Policy No", "Company", "Plan", "IMD Code", "Mobile No", "Name", "Sum Assured", "Payment Type", "Tenure", "Risk start Date", "Risk End date", "OD", "TP", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Created By", "Actions"];
-  const mfHeaders = ["SL", "Month", "Folio No", "Company", "Fund Name", "IMD Code", "Mobile No", "Name", "Amount", "Payment Date", "Next Payment", "Tenure", "Risk start Date", "Risk End date", "Net Prem", "Total prem", "Payout", "Co%", "Remarks", "Created By", "Actions"];
+  const recordColumns = RECORD_COLUMNS[filter];
 
-  const getHeaders = () => {
-    if (filter === "Motor") return motorHeaders;
-    if (filter === "Health") return healthHeaders;
-    if (filter === "SME") return smeHeaders;
-    if (filter === "Life") return lifeHeaders;
-    if (filter === "MutualFund") return mfHeaders;
-    return [];
-  };
-
-  const renderCell = (val) => (
-    <td style={{ padding: "12px 15px", color: "#1e293b", fontSize: 12, borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>
-      {val || "-"}
+  const renderCell = (val, key) => (
+    <td key={key} style={{ padding: "12px 15px", color: "#1e293b", fontSize: 12, borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>
+      {val === "" || val === undefined || val === null ? "-" : val}
     </td>
   );
 
@@ -831,11 +884,17 @@ const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "a
               }}
             />
           </div>
-          <div style={{ display: "flex", gap: 5 }}>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
             {["Motor", "Health", "SME", "Life", "MutualFund"].map(cat => (
               <button key={cat} onClick={() => setFilter(cat)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e2e8f0", background: filter === cat ? "#1e90ff" : "#f1f5f9", color: filter === cat ? "#fff" : "#475569", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>{cat}</button>
             ))}
           </div>
+          <ExcelExportButton
+            rows={filteredEntries}
+            columns={recordColumns}
+            sheetName={filter}
+            fileName={`SMR_${filter}_${yearFilter || "AllYears"}_${monthFilter || "AllMonths"}`}
+          />
         </div>
       </div>
 
@@ -844,7 +903,7 @@ const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "a
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {getHeaders().map(h => (
+                {[...recordColumns.map(column => column.header), "Actions"].map(h => (
                   <th key={h} style={{ padding: "12px 15px", color: "#64748b", fontSize: 10, fontWeight: 700, textAlign: "left", textTransform: "uppercase", letterSpacing: "0.5px", whiteSpace: "nowrap" }}>{h}</th>
                 ))}
                 <th style={{ padding: "12px 15px", color: "#64748b", fontSize: 10, fontWeight: 700, textAlign: "left", textTransform: "uppercase" }}>Docs</th>
@@ -853,129 +912,7 @@ const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "a
             <tbody>
               {filteredEntries.map((ent, idx) => (
                 <tr key={ent.id}>
-                  {filter === "Motor" && (
-                    <>
-                      {renderCell(ent.slNo || idx + 1)}
-                      {renderCell(ent.entryMonth ? `${ent.entryMonth}/${ent.entryYear}` : "-")}
-                      {renderCell(ent.vehicleNumber)}
-                      {renderCell(ent.policyNo)}
-                      {renderCell(ent.make)}
-                      {renderCell(ent.model)}
-                      {renderCell(ent.imdCode)}
-                      {renderCell(ent.mobileNo)}
-                      {renderCell(ent.name)}
-                      {renderCell(ent.company)}
-                      {renderCell(ent.vehicleType)}
-                      {renderCell(ent.policyType)}
-                      {renderCell(ent.tenure)}
-                      {renderCell(ent.riskDate)}
-                      {renderCell(ent.endDate)}
-                      {renderCell(ent.od)}
-                      {renderCell(ent.tp)}
-                      {renderCell(ent.netPrem)}
-                      {renderCell(ent.prem)}
-                      {renderCell(ent.payout)}
-                      {renderCell(ent.companyPercentage)}
-                      {renderCell(ent.remarks)}
-                      {renderCell(ent.addedByName)}
-                    </>
-                  )}
-                  {filter === "Health" && (
-                    <>
-                      {renderCell(ent.slNo || idx + 1)}
-                      {renderCell(ent.entryMonth ? `${ent.entryMonth}/${ent.entryYear}` : "-")}
-                      {renderCell(ent.policyNo)}
-                      {renderCell(ent.company)}
-                      {renderCell(ent.subType)}
-                      {renderCell(ent.plan)}
-                      {renderCell(ent.imdCode)}
-                      {renderCell(ent.mobileNo)}
-                      {renderCell(ent.name)}
-                      {renderCell(ent.sumAssured)}
-                      {renderCell(ent.familyMembers)}
-                      {renderCell(ent.bonus)}
-                      {renderCell(ent.tenure)}
-                      {renderCell(ent.riskDate)}
-                      {renderCell(ent.endDate)}
-                      {renderCell(ent.prem)}
-                      {renderCell(ent.payout)}
-                      {renderCell(ent.companyPercentage)}
-                      {renderCell(ent.remarks)}
-                      {renderCell(ent.addedByName)}
-                    </>
-                  )}
-                  {filter === "SME" && (
-                    <>
-                      {renderCell(ent.slNo || idx + 1)}
-                      {renderCell(ent.entryMonth ? `${ent.entryMonth}/${ent.entryYear}` : "-")}
-                      {renderCell(ent.policyNo)}
-                      {renderCell(ent.company)}
-                      {renderCell(ent.subType)}
-                      {renderCell(ent.imdCode)}
-                      {renderCell(ent.mobileNo)}
-                      {renderCell(ent.productName)}
-                      {renderCell(ent.name)}
-                      {renderCell(ent.sumAssured)}
-                      {renderCell(ent.tenure)}
-                      {renderCell(ent.riskDate)}
-                      {renderCell(ent.endDate)}
-                      {renderCell(ent.netPrem)}
-                      {renderCell(ent.prem)}
-                      {renderCell(ent.payout)}
-                      {renderCell(ent.companyPercentage)}
-                      {renderCell(ent.remarks)}
-                      {renderCell(ent.addedByName)}
-                    </>
-                  )}
-                  {filter === "Life" && (
-                    <>
-                      {renderCell(ent.slNo || idx + 1)}
-                      {renderCell(ent.entryMonth ? `${ent.entryMonth}/${ent.entryYear}` : "-")}
-                      {renderCell(ent.policyNo)}
-                      {renderCell(ent.company)}
-                      {renderCell(ent.plan)}
-                      {renderCell(ent.imdCode)}
-                      {renderCell(ent.mobileNo)}
-                      {renderCell(ent.name)}
-                      {renderCell(ent.sumAssured)}
-                      {renderCell(ent.paymentType)}
-                      {renderCell(ent.tenure)}
-                      {renderCell(ent.riskDate)}
-                      {renderCell(ent.endDate)}
-                      {renderCell(ent.od)}
-                      {renderCell(ent.tp)}
-                      {renderCell(ent.netPrem)}
-                      {renderCell(ent.prem)}
-                      {renderCell(ent.payout)}
-                      {renderCell(ent.companyPercentage)}
-                      {renderCell(ent.remarks)}
-                      {renderCell(ent.addedByName)}
-                    </>
-                  )}
-                  {filter === "MutualFund" && (
-                    <>
-                      {renderCell(ent.slNo || idx + 1)}
-                      {renderCell(ent.entryMonth ? `${ent.entryMonth}/${ent.entryYear}` : "-")}
-                      {renderCell(ent.folioNo)}
-                      {renderCell(ent.company)}
-                      {renderCell(ent.productName)}
-                      {renderCell(ent.imdCode)}
-                      {renderCell(ent.mobileNo)}
-                      {renderCell(ent.name)}
-                      {renderCell(ent.amount)}
-                      {renderCell(ent.paymentDate)}
-                      {renderCell(ent.nextPaymentDate)}
-                      {renderCell(ent.tenure)}
-                      {renderCell(ent.riskDate)}
-                      {renderCell(ent.endDate)}
-                      {renderCell(ent.netPrem)}
-                      {renderCell(ent.prem)}
-                      {renderCell(ent.payout)}
-                      {renderCell(ent.companyPercentage)}
-                      {renderCell(ent.remarks)}
-                      {renderCell(ent.addedByName)}
-                    </>
-                  )}
+                  {recordColumns.map(column => renderCell(getColumnValue(column, ent, idx), column.header))}
                   <td style={{ padding: "12px 15px", borderBottom: "1px solid #e2e8f0" }}>
                     <div style={{ display: "flex", gap: 8 }}>
                       <button 
@@ -1650,6 +1587,7 @@ const PersonList = ({ isMobile, type, parentAdvisorId, topLevelOnly, onSelect })
   const displayType = type === "Employee" ? "Employee" : "Advisor";
   const idFieldKey = type === "Employee" ? "employeeId" : "advisorId";
   const label = type === "Employee" ? "Employees" : "Advisors";
+  const exportLabel = parentAdvisorId ? "Sub-Advisors" : label;
   const [items, setItems] = useState([]);
   const [viewingDocs, setViewingDocs] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
@@ -1775,6 +1713,24 @@ const PersonList = ({ isMobile, type, parentAdvisorId, topLevelOnly, onSelect })
   return (
     <div>
       <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
+        <div style={{ padding: isMobile ? 16 : "20px 24px", display: "flex", justifyContent: "flex-end" }}>
+          <ExcelExportButton
+            rows={items}
+            columns={[
+              { header: "SL", value: (_, index) => index + 1 },
+              { header: `${displayType} ID`, key: idFieldKey },
+              { header: "Name", key: "name" },
+              { header: "Number", key: "number" },
+              { header: "Email", key: "email" },
+              { header: "Qualification", key: "qualification" },
+              { header: "Photo", key: "photoUrl" },
+              { header: "Images", value: item => (item.imageUrls || []).join("\n") },
+              { header: "PDFs", value: item => (item.pdfUrls || []).join("\n") },
+            ]}
+            sheetName={exportLabel}
+            fileName={`SMR_${exportLabel}`}
+          />
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
             <thead>
@@ -2047,6 +2003,21 @@ const docLinkStyle = { color: "#1e90ff", fontSize: 12, fontWeight: 700, textDeco
 
 const ProfileCard = ({ isMobile, name, badge, photoUrl, rows, imageUrls = [], pdfUrls = [] }) => (
   <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 20 : 32, boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      <ExcelExportButton
+        rows={[{ name, badge, photoUrl, details: rows, imageUrls, pdfUrls }]}
+        columns={[
+          { header: "Name", key: "name" },
+          { header: "Role", key: "badge" },
+          ...rows.map((row, index) => ({ header: row.label, value: profile => profile.details[index].value })),
+          { header: "Photo", key: "photoUrl" },
+          { header: "Images", value: profile => profile.imageUrls.join("\n") },
+          { header: "PDFs", value: profile => profile.pdfUrls.join("\n") },
+        ]}
+        sheetName="Profile"
+        fileName={`SMR_${name || "Account"}_Profile`}
+      />
+    </div>
     <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
       {photoUrl ? (
         <img src={photoUrl} alt={name} style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover" }} />
