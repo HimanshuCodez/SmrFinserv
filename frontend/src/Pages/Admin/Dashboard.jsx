@@ -1589,6 +1589,7 @@ const PersonList = ({ isMobile, type, parentAdvisorId, topLevelOnly, onSelect })
   const label = type === "Employee" ? "Employees" : "Advisors";
   const exportLabel = parentAdvisorId ? "Sub-Advisors" : label;
   const [items, setItems] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [viewingDocs, setViewingDocs] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -1610,6 +1611,12 @@ const PersonList = ({ isMobile, type, parentAdvisorId, topLevelOnly, onSelect })
     });
     return () => unsubscribe();
   }, [collectionName, parentAdvisorId, topLevelOnly]);
+
+  const searchQuery = searchTerm.trim().toLowerCase();
+  const filteredItems = items.filter(item => (
+    [item[idFieldKey], item.name, item.number, item.email]
+      .some(value => String(value ?? "").toLowerCase().includes(searchQuery))
+  ));
 
   const handleDelete = async (id) => {
     if (window.confirm(`Are you sure you want to delete this ${displayType.toLowerCase()}?`)) {
@@ -1713,9 +1720,17 @@ const PersonList = ({ isMobile, type, parentAdvisorId, topLevelOnly, onSelect })
   return (
     <div>
       <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
-        <div style={{ padding: isMobile ? 16 : "20px 24px", display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ padding: isMobile ? 16 : "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <input
+            type="search"
+            aria-label={`Search ${exportLabel.toLowerCase()}`}
+            placeholder={`Search ${displayType} ID, name, phone or email...`}
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, width: isMobile ? "100%" : 360, maxWidth: "100%", boxSizing: "border-box" }}
+          />
           <ExcelExportButton
-            rows={items}
+            rows={filteredItems}
             columns={[
               { header: "SL", value: (_, index) => index + 1 },
               { header: `${displayType} ID`, key: idFieldKey },
@@ -1741,7 +1756,7 @@ const PersonList = ({ isMobile, type, parentAdvisorId, topLevelOnly, onSelect })
               </tr>
             </thead>
             <tbody>
-              {items.map((item, idx) => (
+              {filteredItems.map((item, idx) => (
                 <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
                   <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{idx + 1}</td>
                   <td style={{ padding: "12px 20px" }}>
@@ -1793,8 +1808,12 @@ const PersonList = ({ isMobile, type, parentAdvisorId, topLevelOnly, onSelect })
             </tbody>
           </table>
         </div>
-        {items.length === 0 && (
-          <EmptyState icon={type === "Employee" ? "🧑‍💼" : "🧑‍🏫"} title={`No ${label} Found`} subtitle={`Saved ${displayType.toLowerCase()} records will appear here.`} />
+        {filteredItems.length === 0 && (
+          <EmptyState
+            icon={type === "Employee" ? "🧑‍💼" : "🧑‍🏫"}
+            title={`No ${label} Found`}
+            subtitle={searchQuery ? "Try a different ID, name, phone or email." : `Saved ${displayType.toLowerCase()} records will appear here.`}
+          />
         )}
       </div>
 
