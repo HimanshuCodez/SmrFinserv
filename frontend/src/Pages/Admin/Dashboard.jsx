@@ -6,6 +6,8 @@ import toast, { Toaster } from "react-hot-toast";
 import { syncToGoogleSheets, syncAllToGoogleSheets } from "../../utils/googleSheets";
 import ExcelExportButton from "../../Components/ExcelExportButton";
 import { getColumnValue } from "../../utils/excelExport";
+import PermissionSelector from "../../Components/PermissionSelector";
+import { ROLE_LABELS, getPanelRole, getUserPermissions, getPermissionOptions, getNavigationItems, hasPermission, canGrantPermissions, canManageUser, describePermissions } from "../../utils/permissions";
 
 const SMR_LOGO = "https://i.postimg.cc/Fsbgy6sQ/smr.png";
 
@@ -41,30 +43,32 @@ const EmptyState = ({ icon, title, subtitle }) => (
   </div>
 );
 
-const ROLE_LABELS = {
-  Admin: "Admin",
-  DataEntry: "Data Entry",
-  Advisor: "Advisor",
-  SubAdvisor: "Sub Advisor",
-};
-
-// Accounts created before the Data Entry role existed are stored as "User" or "Employee".
-const getPanelRole = (user) => {
-  if (!user) return null;
-  return ["Admin", "Advisor", "SubAdvisor"].includes(user.role) ? user.role : "DataEntry";
-};
-
 const AllUsers = ({ isMobile, users, currentUser }) => {
-  const handleRoleChange = async (userId, role) => {
+  const [editingUserId, setEditingUserId] = useState(null);
+  const [permissions, setPermissions] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const editingUser = users.find(user => user.id === editingUserId);
+
+  const handlePermissionSave = async () => {
+    if (!canManageUser(currentUser, editingUser) || !canGrantPermissions(currentUser, permissions)) {
+      return toast.error("You cannot change this user's permissions.");
+    }
+    setSaving(true);
     try {
-      await updateDoc(doc(db, "users", userId), { role });
-      toast.success("Access updated successfully!");
+      await updateDoc(doc(db, "users", editingUser.id), { permissions, updatedAt: serverTimestamp() });
+      setEditingUserId(null);
+      toast.success("Permissions updated successfully!");
     } catch (e) {
-      toast.error("Error updating access: " + e.message);
+      toast.error("Error updating permissions: " + e.message);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleRemove = async (userId, name) => {
+    if (!canManageUser(currentUser, users.find(user => user.id === userId))) {
+      return toast.error("You cannot remove this account.");
+    }
     if (window.confirm(`Are you sure you want to remove ${name || "this user"}?`)) {
       try {
         await deleteDoc(doc(db, "users", userId));
@@ -81,6 +85,17 @@ const AllUsers = ({ isMobile, users, currentUser }) => {
         <h1 style={{ color: "#1e293b", fontSize: isMobile ? 22 : 26, fontWeight: 800, fontFamily: "'Playfair Display', serif", marginBottom: 6 }}>User Data</h1>
         <p style={{ color: "#64748b", fontSize: 13 }}>Manage and monitor all registered users</p>
       </div>
+      {editingUser && (
+        <section aria-label={`Permissions for ${editingUser.name}`} style={{ background: "#fff", border: "1px solid #bfdbfe", borderRadius: 16, padding: isMobile ? 16 : 24, marginBottom: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Edit permissions: {editingUser.name}</h2>
+          <PermissionSelector value={permissions} onChange={setPermissions} user={editingUser} currentUser={currentUser} disabled={saving || !canManageUser(currentUser, editingUser)} />
+          {permissions.length === 0 && <p style={{ color: "#64748b", fontSize: 13, marginTop: 12 }}>This user will have no dashboard access until permissions are selected.</p>}
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <button type="button" onClick={handlePermissionSave} disabled={saving || !canManageUser(currentUser, editingUser)} style={{ background: "#1e90ff", color: "#fff", border: 0, borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}>{saving ? "Saving..." : "Save Permissions"}</button>
+            <button type="button" onClick={() => setEditingUserId(null)} disabled={saving} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}>Cancel</button>
+          </div>
+        </section>
+      )}
       <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
         <div style={{ padding: isMobile ? "16px" : "20px 24px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span style={{ color: "#1e293b", fontWeight: 700, fontSize: 15 }}>User Directory</span>
@@ -90,7 +105,7 @@ const AllUsers = ({ isMobile, users, currentUser }) => {
               { header: "User", key: "name" },
               { header: "Email", key: "email" },
               { header: "Phone", key: "phone" },
-              { header: "Access", value: user => ROLE_LABELS[getPanelRole(user)] },
+              { header: "Permissions", value: describePermissions },
             ]}
             sheetName="Users"
             fileName="SMR_Users"
@@ -100,7 +115,7 @@ const AllUsers = ({ isMobile, users, currentUser }) => {
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {["User", "Email", "Phone", "Access", "Password", "Actions"].map(h => (
+                {["User", "Email", "Phone", "Permissions", "Actions"].map(h => (
                   <th key={h} style={{ padding: "12px 20px", color: "#64748b", fontSize: 11, fontWeight: 700, textAlign: "left", letterSpacing: "1px", textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
@@ -108,35 +123,27 @@ const AllUsers = ({ isMobile, users, currentUser }) => {
             <tbody>
               {users.map((user) => {
                 const isSelf = currentUser && user.id === currentUser.id;
-                const userPanelRole = getPanelRole(user);
-                const isPortalRole = userPanelRole === "Advisor" || userPanelRole === "SubAdvisor";
+                const canManage = canManageUser(currentUser, user);
                 return (
                   <tr key={user.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
                     <td style={{ padding: "12px 20px", color: "#1e293b", fontSize: 13 }}>{user.name}</td>
                     <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.email}</td>
                     <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.phone}</td>
                     <td style={{ padding: "12px 20px" }}>
-                      {isPortalRole ? (
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "#1e293b" }}>{ROLE_LABELS[userPanelRole]}</span>
-                      ) : (
-                        <select
-                          value={userPanelRole}
-                          disabled={isSelf}
-                          onChange={e => handleRoleChange(user.id, e.target.value)}
-                          style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#1e293b", cursor: isSelf ? "not-allowed" : "pointer" }}
-                        >
-                          <option value="Admin">{ROLE_LABELS.Admin}</option>
-                          <option value="DataEntry">{ROLE_LABELS.DataEntry}</option>
-                        </select>
-                      )}
+                      <div style={{ fontSize: 12, color: "#475569", maxWidth: 320, lineHeight: 1.5, marginBottom: 8 }}>{describePermissions(user)}</div>
+                      <button type="button" disabled={!canManage || saving}
+                        title={isSelf ? "You cannot change your own permissions" : !canManage ? "This account has permissions you cannot manage" : ""}
+                        onClick={() => { setEditingUserId(user.id); setPermissions(getUserPermissions(user).filter(key => getPermissionOptions(user).some(option => option.key === key))); }}
+                        style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#1e293b", cursor: canManage ? "pointer" : "not-allowed" }}>
+                        Edit Permissions
+                      </button>
                     </td>
-                    <td style={{ padding: "12px 20px", color: "#475569", fontSize: 13 }}>{user.password}</td>
                     <td style={{ padding: "12px 20px" }}>
                       <button
                         onClick={() => handleRemove(user.id, user.name)}
-                        disabled={isSelf}
-                        title={isSelf ? "You cannot remove your own account" : ""}
-                        style={{ background: isSelf ? "#f1f5f9" : "#ef4444", color: isSelf ? "#94a3b8" : "#fff", border: "none", borderRadius: 4, padding: "6px 10px", fontSize: 10, fontWeight: 700, cursor: isSelf ? "not-allowed" : "pointer" }}
+                        disabled={!canManage || saving}
+                        title={isSelf ? "You cannot remove your own account" : !canManage ? "This account has permissions you cannot manage" : ""}
+                        style={{ background: canManage ? "#ef4444" : "#f1f5f9", color: canManage ? "#fff" : "#94a3b8", border: "none", borderRadius: 4, padding: "6px 10px", fontSize: 10, fontWeight: 700, cursor: canManage ? "pointer" : "not-allowed" }}
                       >
                         REMOVE
                       </button>
@@ -345,6 +352,9 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!hasPermission(currentUser, recordToEdit ? "editRecords" : "records")) {
+      return toast.error("You do not have permission to save this record.");
+    }
     setLoading(true);
     try {
       const isMF = form.category === "MutualFund";
@@ -378,10 +388,10 @@ const DataRecord = ({ isMobile, currentUser, recordToEdit, onFinished }) => {
         familyMembers: finalFamilyMembers,
         addedBy: currentUser?.id || "admin",
         addedByName: currentUser?.name || "Super Admin",
-        advisorId: currentUser?.role === "Advisor" ? currentUser.consultantId
+        advisorId: recordToEdit ? (recordToEdit.advisorId || "") : currentUser?.role === "Advisor" ? currentUser.consultantId
           : currentUser?.role === "SubAdvisor" ? currentUser.parentAdvisorId
           : (recordToEdit?.advisorId || ""),
-        subAdvisorId: currentUser?.role === "SubAdvisor" ? currentUser.consultantId : (recordToEdit?.subAdvisorId || ""),
+        subAdvisorId: recordToEdit ? (recordToEdit.subAdvisorId || "") : currentUser?.role === "SubAdvisor" ? currentUser.consultantId : "",
       };
 
       // Remove custom fields from firestore data
@@ -795,6 +805,8 @@ const RECORD_COLUMNS = Object.fromEntries(Object.entries({
 ]]));
 
 const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "admin", scopeId }) => {
+  const canEdit = hasPermission(currentUser, "editRecords");
+  const canDelete = hasPermission(currentUser, "deleteRecords");
   const [entries, setEntries] = useState([]);
   const [filter, setFilter] = useState("Motor");
   const [searchTerm, setSearchTerm] = useState("");
@@ -826,6 +838,7 @@ const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "a
   });
 
   const handleDelete = async (id) => {
+    if (!canDelete) return toast.error("You do not have permission to delete records.");
     if (window.confirm("Are you sure you want to delete this record?")) {
       try {
         await deleteDoc(doc(db, "dataEntries", id));
@@ -915,18 +928,19 @@ const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "a
                   {recordColumns.map(column => renderCell(getColumnValue(column, ent, idx), column.header))}
                   <td style={{ padding: "12px 15px", borderBottom: "1px solid #e2e8f0" }}>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button 
+                      {canEdit && <button
                         onClick={() => setEditingRecord(ent)}
                         style={{ background: "#1e90ff", color: "#fff", border: "none", borderRadius: 4, padding: "4px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
                       >
                         EDIT
-                      </button>
-                      <button 
+                      </button>}
+                      {canDelete && <button
                         onClick={() => handleDelete(ent.id)}
                         style={{ background: "#ef4444", color: "#fff", border: "none", borderRadius: 4, padding: "4px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
                       >
                         DELETE
-                      </button>
+                      </button>}
+                      {!canEdit && !canDelete && <span style={{ color: "#64748b", fontSize: 12 }}>View only</span>}
                     </div>
                   </td>
                   <td style={{ padding: "12px 15px", borderBottom: "1px solid #e2e8f0" }}>
@@ -973,7 +987,7 @@ const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "a
         </div>
       )}
 
-      {editingRecord && (
+      {editingRecord && canEdit && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, backdropFilter: "blur(4px)" }}>
           <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 1000, maxHeight: "90vh", overflowY: "auto", position: "relative", border: "1px solid #e2e8f0", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
             <button 
@@ -997,22 +1011,25 @@ const UserRecord = ({ isMobile, currentUser, title = "Find Data", scopeMode = "a
   );
 };
 
-const CreateUser = ({ isMobile }) => {
-  const initialFormState = { name: "", email: "", phone: "", password: "", userRole: "DataEntry", consultantId: "" };
+const CreateUser = ({ isMobile, currentUser }) => {
+  const initialFormState = { name: "", email: "", phone: "", password: "", permissions: [], consultantId: "" };
   const [form, setForm] = useState(initialFormState);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [advisorOptions, setAdvisorOptions] = useState([]);
+  const linkedAdvisor = advisorOptions.find(advisor => advisor.id === form.consultantId);
+  const accountProfile = {
+    role: form.consultantId ? (linkedAdvisor?.parentAdvisorId ? "SubAdvisor" : "Advisor") : "Custom",
+    consultantId: form.consultantId,
+  };
 
   useEffect(() => {
-    if (form.userRole !== "Advisor") return;
     let profiles = [];
     let linkedIds = new Set();
     const publish = () => setAdvisorOptions(profiles.filter(c => !linkedIds.has(c.id)));
     const unsubProfiles = onSnapshot(query(collection(db, "consultants"), orderBy("createdAt", "desc")), (snapshot) => {
       profiles = snapshot.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(c => !c.parentAdvisorId);
+        .map(d => ({ id: d.id, ...d.data() }));
       publish();
     });
     const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
@@ -1020,19 +1037,27 @@ const CreateUser = ({ isMobile }) => {
       publish();
     });
     return () => { unsubProfiles(); unsubUsers(); };
-  }, [form.userRole]);
+  }, []);
 
   const handleSubmit = async () => {
-    if (form.userRole === "Advisor" && !form.consultantId) {
-      toast.error("Please select which advisor profile this login belongs to.");
-      return;
+    if (!hasPermission(currentUser, "create") || !canGrantPermissions(currentUser, form.permissions)) {
+      return toast.error("You can only assign permissions you have access to.");
+    }
+    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
+      return toast.error("Name, email and password are required.");
+    }
+    if (!getNavigationItems({ ...accountProfile, permissions: form.permissions }).length) {
+      return toast.error("Select at least one dashboard section for this user.");
+    }
+    if (form.consultantId && !linkedAdvisor) {
+      return toast.error("Please select an available advisor profile.");
     }
     setLoading(true);
     try {
-      const { userRole, consultantId, ...rest } = form;
-      const docData = userRole === "Advisor"
-        ? { ...rest, role: "Advisor", consultantId, parentAdvisorId: "" }
-        : { ...rest, role: userRole };
+      const docData = {
+        ...form, name: form.name.trim(), email: form.email.trim(),
+        ...accountProfile, parentAdvisorId: linkedAdvisor?.parentAdvisorId || "",
+      };
       await addDoc(collection(db, "users"), {
         ...docData,
         createdAt: serverTimestamp()
@@ -1065,43 +1090,32 @@ const CreateUser = ({ isMobile }) => {
        </div>
 
        <div style={{ marginTop: 24, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8, fontWeight: 700 }}>Account Type</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-            {[
-              { key: "Admin", label: "Admin (Main Admin Panel)" },
-              { key: "DataEntry", label: "Data Entry (Data Entry Panel)" },
-              { key: "Advisor", label: "Advisor (Advisor Panel)" },
-            ].map(opt => (
-              <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: opt.key === "Admin" ? 700 : 400, color: "#1e293b", cursor: "pointer" }}>
-                <input
-                  type="radio"
-                  name="userRole"
-                  checked={form.userRole === opt.key}
-                  onChange={() => setForm({ ...form, userRole: opt.key })}
-                />
-                {opt.label}
-              </label>
-            ))}
-          </div>
-
-          {form.userRole === "Advisor" && (
-            <div style={{ marginTop: 14 }}>
-              <label style={{ fontSize: 12, color: "#64748b", marginBottom: 8, display: "block" }}>Link to Advisor Profile</label>
+            <div style={{ marginBottom: 20 }}>
+              <label htmlFor="advisor-profile" style={{ fontSize: 12, color: "#64748b", marginBottom: 8, display: "block" }}>Link to Advisor Profile (optional)</label>
               <select
+                id="advisor-profile"
                 value={form.consultantId}
-                onChange={e => setForm({ ...form, consultantId: e.target.value })}
+                disabled={loading}
+                onChange={e => {
+                  const consultantId = e.target.value;
+                  const advisor = advisorOptions.find(option => option.id === consultantId);
+                  const profile = { consultantId, role: consultantId ? (advisor?.parentAdvisorId ? "SubAdvisor" : "Advisor") : "Custom" };
+                  const available = getPermissionOptions(profile).map(option => option.key);
+                  setForm({ ...form, consultantId, permissions: form.permissions.filter(key => available.includes(key)) });
+                }}
                 style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, color: "#1e293b", width: "100%" }}
               >
-                <option value="">Select Advisor Profile</option>
+                <option value="">No linked advisor profile</option>
                 {advisorOptions.map(a => (
-                  <option key={a.id} value={a.id}>{a.name} {a.advisorId ? `(${a.advisorId})` : ""}</option>
+                  <option key={a.id} value={a.id}>{a.name} {a.advisorId ? `(${a.advisorId})` : ""}{a.parentAdvisorId ? " — Sub-Advisor" : ""}</option>
                 ))}
               </select>
               {advisorOptions.length === 0 && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>No unlinked advisor profiles found. Create one first under "Create Advisor".</div>
+                <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>No unlinked advisor profiles available.</div>
               )}
+              <p style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>Link a profile for advisor ownership and scoped Find Data access. Choose dashboard permissions below.</p>
             </div>
-          )}
+          <PermissionSelector value={form.permissions} onChange={permissions => setForm({ ...form, permissions })} user={accountProfile} currentUser={currentUser} disabled={loading} />
        </div>
 
        <button onClick={handleSubmit} disabled={loading} style={{ marginTop: 24, background: "#1e90ff", color: "#fff", border: "none", borderRadius: 10, padding: "12px 32px", cursor: loading ? "not-allowed" : "pointer", width: isMobile ? "100%" : "auto" }}>
@@ -2232,68 +2246,52 @@ const SubAdvisorData = ({ isMobile, currentUser }) => (
   </div>
 );
 
-const PANELS = {
-  Admin: {
-    title: "Main Admin Panel",
-    items: [
-      { key: "records", label: "Record Data", icon: "📊" },
-      { key: "userrecord", label: "Find Data", icon: "🗂️" },
-      { key: "create", label: "Create User", icon: "➕" },
-      { key: "users", label: "User Data", icon: "👥" },
-      { key: "createAdvisor", label: "Create Advisor", icon: "➕" },
-      { key: "advisors", label: "Advisor Data", icon: "🧑‍🏫" },
-      { key: "createEmployees", label: "Create Employees", icon: "➕" },
-      { key: "employees", label: "Employees Data", icon: "🧑‍💼" },
-      { key: "sync", label: "Sync Settings", icon: "⚙️" },
-    ],
-  },
-  DataEntry: {
-    title: "Data Entry Panel",
-    items: [
-      { key: "profile", label: "Profile", icon: "👤" },
-      { key: "records", label: "Record Data", icon: "📊" },
-      { key: "createEmployees", label: "Create Employees", icon: "➕" },
-      { key: "employees", label: "Find Employees", icon: "🔎" },
-    ],
-  },
-  Advisor: {
-    title: "Advisor Panel",
-    items: [
-      { key: "profile", label: "Profile", icon: "👤" },
-      { key: "records", label: "Record Data", icon: "📊" },
-      { key: "userrecord", label: "Find Data", icon: "🗂️" },
-      { key: "createSubAdvisor", label: "Create Sub-Advisor", icon: "➕" },
-      { key: "subAdvisors", label: "Advisors Data", icon: "🧑‍🏫" },
-    ],
-  },
-  SubAdvisor: {
-    title: "Sub-Advisor Panel",
-    items: [
-      { key: "profile", label: "Profile", icon: "👤" },
-      { key: "records", label: "Record Data", icon: "📊" },
-      { key: "userrecord", label: "Find Data", icon: "🗂️" },
-    ],
-  },
-};
-
 export default function Dashboard() {
-  const [currentUser, setCurrentUser] = useState(JSON.parse(localStorage.getItem("adminUser")));
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("adminUser")); }
+    catch { return null; }
+  });
+  const [verifiedUserId, setVerifiedUserId] = useState(null);
+  const [accountError, setAccountError] = useState("");
   const [active, setActive] = useState("records");
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [collapsed, setCollapsed] = useState(window.innerWidth < 1024);
   const [users, setUsers] = useState([]);
+  const sessionReady = Boolean(currentUser) && (!currentUser.id || currentUser.id === verifiedUserId);
+  const canViewUsers = sessionReady && hasPermission(currentUser, "users");
+  const canSync = sessionReady && hasPermission(currentUser, "sync");
 
   useEffect(() => {
-    if (currentUser?.role === "Admin") {
+    if (!currentUser?.id) return;
+    const userId = currentUser.id;
+    return onSnapshot(doc(db, "users", userId), snapshot => {
+      setAccountError("");
+      setVerifiedUserId(userId);
+      if (!snapshot.exists()) {
+        localStorage.removeItem("adminUser");
+        setCurrentUser(null);
+        return;
+      }
+      const updatedUser = { ...snapshot.data(), id: snapshot.id };
+      setCurrentUser(updatedUser);
+      localStorage.setItem("adminUser", JSON.stringify(updatedUser));
+    }, () => {
+      setVerifiedUserId(null);
+      setAccountError("Unable to load your current permissions. Please sign in again.");
+    });
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (canViewUsers) {
         const unsubscribe = onSnapshot(query(collection(db, "users"), orderBy("createdAt", "desc")), (snap) => {
           setUsers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
         return () => unsubscribe();
     }
-  }, [currentUser]);
+  }, [canViewUsers]);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!canSync) return;
 
     const ensureSpreadsheetBackfill = async () => {
       try {
@@ -2308,7 +2306,7 @@ export default function Dashboard() {
     };
 
     ensureSpreadsheetBackfill();
-  }, [currentUser]);
+  }, [canSync]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -2320,12 +2318,18 @@ export default function Dashboard() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  if (!currentUser) return <Login onLogin={(u) => { setCurrentUser(u); localStorage.setItem("adminUser", JSON.stringify(u)); }} />;
+  if (!currentUser) return <Login onLogin={(u) => { setVerifiedUserId(null); setAccountError(""); setActive("records"); setCurrentUser(u); localStorage.setItem("adminUser", JSON.stringify(u)); }} />;
+
+  if (!sessionReady) return (
+    <div style={{ padding: 32, textAlign: "center" }}>
+      <p>{accountError || "Loading your permissions..."}</p>
+      <button type="button" onClick={() => { localStorage.removeItem("adminUser"); setCurrentUser(null); }}>Back to login</button>
+    </div>
+  );
 
   const panelRole = getPanelRole(currentUser);
-  const panel = PANELS[panelRole];
-  const navItems = panel.items;
-  const current = navItems.some(n => n.key === active) ? active : navItems[0].key;
+  const navItems = getNavigationItems(currentUser);
+  const current = navItems.some(n => n.key === active) ? active : navItems[0]?.key;
   const isPortalRole = panelRole === "Advisor" || panelRole === "SubAdvisor";
   const missingProfileLink = isPortalRole && !currentUser.consultantId;
 
@@ -2358,7 +2362,7 @@ export default function Dashboard() {
           {isMobile && <button onClick={() => setCollapsed(true)} style={{ background: "transparent", border: "none", color: "#64748b", fontSize: 24, cursor: "pointer" }}>&times;</button>}
         </div>
         {(!collapsed || isMobile) && (
-          <div style={{ padding: "0 20px 8px", fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "1px", textTransform: "uppercase" }}>{panel.title}</div>
+          <div style={{ padding: "0 20px 8px", fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "1px", textTransform: "uppercase" }}>Dashboard</div>
         )}
         <nav style={{ padding: 10, flex: 1, minHeight: 0, overflowY: "auto" }}>
           {navItems.map(item => (
@@ -2377,15 +2381,17 @@ export default function Dashboard() {
         <header style={{ height: 64, borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobile ? "0 16px" : "0 24px", background: "#fff" }}>
            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <button onClick={() => setCollapsed(!collapsed)} style={{ background: "transparent", border: "none", color: "#1e293b", cursor: "pointer", fontSize: 20, padding: 8, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>☰</button>
-              <h2 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{navItems.find(n => n.key === current)?.label}</h2>
+              <h2 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{navItems.find(n => n.key === current)?.label || "No access assigned"}</h2>
            </div>
            <div style={{ textAlign: "right", minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{currentUser.name}</div>
-                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>{ROLE_LABELS[panelRole]}</div>
+                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>{Object.hasOwn(currentUser, "permissions") ? "Custom Access" : ROLE_LABELS[panelRole]}</div>
            </div>
         </header>
         <main style={{ flex: 1, padding: isMobile ? 16 : 24, overflowY: "auto", background: "#f8fafc" }}>
-          {missingProfileLink && current !== "profile" ? (
+          {!current ? (
+            <EmptyState icon="🔒" title="No Permissions Assigned" subtitle="Ask your administrator to select the dashboard permissions you need." />
+          ) : missingProfileLink && ["records", "userrecord", "createSubAdvisor", "subAdvisors"].includes(current) ? (
             <EmptyState icon="🔗" title="No Profile Linked" subtitle="This login is not linked to an advisor profile yet. Ask an admin to link it." />
           ) : (
             <>
@@ -2399,7 +2405,7 @@ export default function Dashboard() {
                   scopeMode={panelRole === "Advisor" ? "advisor" : panelRole === "SubAdvisor" ? "subadvisor" : "admin"}
                 />
               )}
-              {current === "create" && <CreateUser isMobile={isMobile} />}
+              {current === "create" && <CreateUser isMobile={isMobile} currentUser={currentUser} />}
               {current === "users" && <AllUsers isMobile={isMobile} users={users} currentUser={currentUser} />}
               {current === "createAdvisor" && <CreateAdvisor isMobile={isMobile} />}
               {current === "advisors" && <AdvisorData isMobile={isMobile} currentUser={currentUser} />}

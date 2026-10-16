@@ -1,5 +1,17 @@
 # React + Vite
 
+## User permissions
+
+Create User now saves an explicit `permissions` array instead of choosing a fixed account type. Select the dashboard sections and record actions the user needs. An optional advisor profile link retains record ownership and scopes Find Data to that advisor or sub-advisor. Advisor Data explicitly grants access to all advisor profiles and their clients.
+
+Use **User Data → Edit Permissions → Save Permissions** to change an existing login. Clearing all permissions removes dashboard access. Changes are read from the user document while the account is signed in; cached permissions are refreshed before opening the dashboard. User managers cannot change their own access, manage accounts with permissions beyond their own, or grant permissions they do not hold.
+
+Existing logins without a `permissions` field retain their legacy role access. An explicit empty array grants no access; it never falls back to the role. `role`, `consultantId` and `parentAdvisorId` continue to describe advisor ownership rather than override selected permissions. Record editing and deletion have separate permissions from viewing and exporting.
+
+These checks govern the dashboard only. The existing application uses a custom login and public Firestore/Storage rules (`firebase.rules`); it does not provide server-enforced authorization. Firebase Authentication and restrictive database/storage rules are needed to enforce these permissions against direct requests. This frontend change does not deploy or modify those rules.
+
+Run `npm run test:permissions` for permission-resolution and delegation checks.
+
 ## Welcome emails
 
 Advisor and employee creation sends a welcome email through `google-apps-script.js` using the existing Resend configuration. New advisor IDs use `SMR` (for example, `SMR001`); employee IDs use `SMRE` (for example, `SMRE001`). Numbering continues from the existing counters and saved records. Existing IDs are preserved, and the email displays the same ID saved on the profile.
